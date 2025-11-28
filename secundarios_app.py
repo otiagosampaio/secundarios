@@ -144,7 +144,7 @@ if 'papeis' not in st.session_state:
     # Adicionando um valor de exemplo inicial no Session State
     st.session_state['papeis'] = [
         {'Emissor': 'BANCO X', 'Ticker': 'CDB-X1', 'Valor': 20000.00, 'Tipo': 'Pré-fixado', 'Taxa': 16.50, 'Data Vencimento': datetime.date.today() + relativedelta(months=+12)},
-        {'Emissor': 'BANCO Y', 'Ticker': 'CDB-Y2', 'Valor': 30000.00, 'Tipo': 'Pós-fixado (% do CDI)', 'Taxa': 105.00, 'Data Vencimento': datetime.date.today() + relativedelta(months=+24)},
+        {'Emissor': 'BANCO Y', 'Ticker': 'CDB-Y2', 'Valor': 30000.00, 'Tipo': 'Pós-fixado', 'Taxa': 105.00, 'Data Vencimento': datetime.date.today() + relativedelta(months=+24)},
     ]
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
