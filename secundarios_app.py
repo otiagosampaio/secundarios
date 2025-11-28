@@ -38,6 +38,10 @@ def carregar_logo():
 
 def formatar_moeda_input(valor_str):
     """Formata uma string de entrada monetária para o padrão de exibição brasileiro (000.000,00)."""
+    # Trata None/vazio como "0,00" para evitar erros na formatação
+    if valor_str is None or valor_str == "":
+        return "0,00"
+        
     valor_limpo = valor_str.replace('R$', '').replace('.', '').replace(',', '.', 1)
     
     try:
@@ -48,6 +52,9 @@ def formatar_moeda_input(valor_str):
 
 def desformatar_moeda(valor_formatado):
     """Converte o formato brasileiro (ponto de milhar, vírgula decimal) para float."""
+    if valor_formatado is None or valor_formatado == "":
+        return 0.0
+        
     valor_float_str = valor_formatado.replace('R$', '').replace('.', '').replace(',', '.')
     try:
         return float(valor_float_str)
@@ -119,7 +126,6 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     return resultado, None
 
 # ===================== CONFIGURAÇÃO INICIAL E SESSION STATE =====================
-# ⭐️ AJUSTE DE LAYOUT: layout="centered" para largura limitada
 st.set_page_config(page_title="Traders Secundários - Calculadora", layout="centered")
 
 # --- Inicialização Padrão ---
@@ -128,19 +134,19 @@ if 'papeis' not in st.session_state:
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
     
-# --- Inicialização dos campos do FORMULÁRIO (Para garantir limpeza automática) ---
+# ⭐️ AJUSTE DE INICIALIZAÇÃO: Todos os campos de texto/número agora iniciam vazios/zero
 if 'emissor_sec' not in st.session_state:
-    st.session_state['emissor_sec'] = "Banco Alfa S.A."
+    st.session_state['emissor_sec'] = ""
 if 'ticker_sec' not in st.session_state:
-    st.session_state['ticker_sec'] = "CDB1234"
+    st.session_state['ticker_sec'] = ""
 if 'tipo_cdb_sec' not in st.session_state:
-    st.session_state['tipo_cdb_sec'] = "Pré-fixado"
+    st.session_state['tipo_cdb_sec'] = "Pré-fixado" # Este precisa de um valor padrão para o selectbox
 if 'taxa_sec' not in st.session_state:
-    st.session_state['taxa_sec'] = 17.00
+    st.session_state['taxa_sec'] = 0.0 # Valor inicial zero para número
 if 'vencimento_sec' not in st.session_state:
-    st.session_state['vencimento_sec'] = datetime.date.today() + relativedelta(months=+12)
+    st.session_state['vencimento_sec'] = datetime.date.today() + relativedelta(months=+12) # Data precisa de um valor inicial para date_input
 if 'valor_bruto_input_sec' not in st.session_state:
-    st.session_state['valor_bruto_input_sec'] = "500.000,00" # Valor base para o formulário de inclusão
+    st.session_state['valor_bruto_input_sec'] = "" # String vazia para o campo de moeda
 
 
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
@@ -159,11 +165,13 @@ st.subheader("Dados Gerais da Simulação", divider='gray')
 c1, c2 = st.columns(2) 
 
 with c1:
-    nome_cliente = st.text_input("Nome do Cliente", "João Silva")
+    # ⭐️ AJUSTE: Campos de texto geral também vazios no início
+    nome_cliente = st.text_input("Nome do Cliente", "")
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
 
 with c2:
-    nome_assessor = st.text_input("Nome do Assessor", "Seu Nome")
+    # ⭐️ AJUSTE: Campos de texto geral também vazios no início
+    nome_assessor = st.text_input("Nome do Assessor", "")
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
 st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral') 
@@ -177,6 +185,7 @@ st.subheader("Inclusão de Novo Papel", divider='gray')
 def adicionar_papel():
     valor_investido_float = desformatar_moeda(formatar_moeda_input(st.session_state.valor_bruto_input_sec))
 
+    # Validação (permanece a mesma)
     if valor_investido_float <= 0:
         st.error("O valor investido deve ser maior que zero.")
         return
@@ -196,21 +205,21 @@ def adicionar_papel():
     
     st.session_state.papeis.append(novo_papel)
     
-    # ⭐️ AJUSTE DE LIMPEZA: Limpar os campos do formulário redefinindo as chaves
-    st.session_state.emissor_sec = "Banco Alfa S.A."
-    st.session_state.ticker_sec = "CDB1234"
-    st.session_state.tipo_cdb_sec = "Pré-fixado"
-    st.session_state.taxa_sec = 17.00
-    st.session_state.vencimento_sec = datetime.date.today() + relativedelta(months=+12)
-    st.session_state.valor_bruto_input_sec = "0,00" # Limpa o campo de valor
+    # ⭐️ AJUSTE DE LIMPEZA: Limpar completamente os campos do formulário redefinindo as chaves
+    st.session_state.emissor_sec = "" # String vazia
+    st.session_state.ticker_sec = "" # String vazia
+    st.session_state.tipo_cdb_sec = "Pré-fixado" # Selectbox volta para o primeiro item
+    st.session_state.taxa_sec = 0.0 # Valor zero
+    st.session_state.vencimento_sec = datetime.date.today() + relativedelta(months=+12) # Data de vencimento default
+    st.session_state.valor_bruto_input_sec = "" # String vazia
 
-    # 🚨 CORREÇÃO CRÍTICA: Força o Streamlit a recarregar a página para exibir a tabela/resultados
     st.rerun() 
 
 with st.form("form_papel", clear_on_submit=False):
     col_e1, col_e2 = st.columns(2) 
 
     with col_e1:
+        # Inputs usam key e assumem o valor vazio/zero do session state na inicialização
         st.text_input("Emissor", key="emissor_sec") 
         st.text_input("Ticker/Código", key="ticker_sec") 
         st.date_input("Data de Vencimento", key="vencimento_sec", format="DD/MM/YYYY")
@@ -223,14 +232,14 @@ with st.form("form_papel", clear_on_submit=False):
         else:
             st.number_input("Taxa Pré-fixada anual (%)", step=0.05, key="taxa_sec")
         
-        # ⭐️ AJUSTE DE VALOR: Input controlado por session state
+        # Input de valor: deve ser string vazia na inicialização
         st.text_input(
             label="Valor investido neste papel", 
-            placeholder="Digite o valor",
+            placeholder="Ex: 100000,00",
             key="valor_bruto_input_sec"
         )
         
-    # ⭐️ AJUSTE DE VALOR: Feedback em tempo real
+    # Feedback em tempo real (agora trata string vazia retornando R$ 0,00)
     valor_formatado_em_tempo_real = formatar_moeda_input(st.session_state.valor_bruto_input_sec)
     st.markdown(f"<p style='color: {TEXTO_PRINCIPAL_ST}; margin-top: 10px;'>Valor a ser adicionado: <b>R$ {valor_formatado_em_tempo_real}</b></p>", unsafe_allow_html=True)
 
@@ -238,11 +247,11 @@ with st.form("form_papel", clear_on_submit=False):
 
 st.markdown("---")
 
-# ===================== TABELA DE PAPÉIS ADICIONADOS =====================
+# ===================== TABELA DE PAPÉIS ADICIONADOS (Restante do Código Omitido) =====================
 
 if not st.session_state.papeis:
     st.info("Nenhum papel adicionado. Use o formulário acima para começar a simulação.")
-    st.stop() # Interrompe a execução aqui se a lista de papéis estiver vazia
+    st.stop()
     
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
@@ -289,7 +298,6 @@ for papel in st.session_state.papeis:
 
 if not resultados_calculados:
     st.error("Não há papéis válidos para consolidar. Verifique as datas de vencimento.")
-    # Não usamos st.stop() aqui, pois já verificamos no início, mas é uma camada de segurança.
     
 total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
 total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
@@ -302,7 +310,6 @@ rentabilidade_efetiva = (rendimento_liquido_total / total_investido) * 100 if to
 st.subheader("Resultado Consolidado da Simulação", divider='gray')
 c1, c2, c3, c4 = st.columns(4)
 
-# ⭐️ AJUSTE DE FORMATO: Usando h4 e fontes menores para evitar corte
 c1.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Total Investido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_investido)}</h4>", unsafe_allow_html=True)
 c2.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Bruto</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_bruto)}</h4>", unsafe_allow_html=True)
 c3.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Impostos (IR + IOF)</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_impostos)}</h4>", unsafe_allow_html=True)
@@ -319,24 +326,21 @@ df_resumo = pd.DataFrame(papeis_para_grafico)
 
 df_resumo['Data Vencimento'] = pd.to_datetime(df_resumo['Data Vencimento'])
 
-# Ajustes de gráfico
 df_resumo['Valor_Grafico'] = df_resumo['Montante Bruto']
 df_resumo['Label_Grafico'] = df_resumo['Emissor'] + ' (' + df_resumo['Data Vencimento'].dt.strftime('%Y') + ')'
 
-# ⭐️ AJUSTE DE GRÁFICO: Altura aumentada (de 4 para 5)
 fig, ax = plt.subplots(figsize=(8, 5)) 
 ax.bar(df_resumo['Label_Grafico'], df_resumo['Valor_Grafico'], color=COR_PRIMARIA_FORM, alpha=0.7)
 ax.set_title("Montante Bruto por Papel (R$)", fontsize=12) 
 ax.set_ylabel("Montante Bruto (R$)", fontsize=10) 
-# ⭐️ AJUSTE DE GRÁFICO: Rotação para 30 graus e labelsize menor para evitar corte
 ax.tick_params(axis='x', rotation=30, labelsize=7) 
 ax.tick_params(axis='y', labelsize=8) 
 ax.grid(axis='y', alpha=0.3)
 plt.tight_layout() 
 st.pyplot(fig)
 
-# ===================== PDF GERAÇÃO (Adaptado para Múltiplos Papéis) =====================
-
+# ===================== PDF GERAÇÃO (Restante do Código Omitido) =====================
+# ... (Funções de PDF) ...
 def grafico_png():
     buf = BytesIO()
     
