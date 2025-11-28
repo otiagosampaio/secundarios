@@ -133,7 +133,7 @@ if 'papeis' not in st.session_state:
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
     
-# --- Inicialização para campos vazios ---
+# --- Inicialização para campos vazios (Limpeza total na abertura) ---
 if 'emissor_sec' not in st.session_state:
     st.session_state['emissor_sec'] = ""
 if 'ticker_sec' not in st.session_state:
@@ -163,7 +163,6 @@ st.markdown("---")
 st.subheader("Dados Gerais da Simulação", divider='gray') 
 c1, c2 = st.columns(2) 
 
-# ⭐️ AJUSTE: Campos de texto geral vazios
 with c1:
     nome_cliente = st.text_input("Nome do Cliente", "")
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
@@ -176,21 +175,22 @@ st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_be
     
 st.markdown("---")
 
-# ===================== ADICIONAR NOVO PAPEL (FORMULÁRIO) =====================
+# ===================== ADICIONAR NOVO PAPEL (FUNÇÃO DE ADIÇÃO) =====================
 
 st.subheader("Inclusão de Novo Papel", divider='gray')
 
-def adicionar_papel():
-    # Esta função agora só adiciona o papel e limpa o estado, sem forçar o rerun
+def adicionar_papel(data_aplicacao):
+    """Faz a validação e adiciona o papel, mas NÃO limpa o session_state (a limpeza ocorre fora, antes do rerun)."""
+    
     valor_investido_float = desformatar_moeda(formatar_moeda_input(st.session_state.valor_bruto_input_sec))
 
     if valor_investido_float <= 0:
         st.error("O valor investido deve ser maior que zero.")
-        return False # Indica que a adição falhou
+        return False
     
     if st.session_state.vencimento_sec <= data_aplicacao:
         st.error("A Data de Vencimento deve ser posterior à Data de Aplicação.")
-        return False # Indica que a adição falhou
+        return False
 
     novo_papel = {
         'Emissor': st.session_state.emissor_sec,
@@ -203,17 +203,9 @@ def adicionar_papel():
     
     st.session_state.papeis.append(novo_papel)
     
-    # Limpar completamente os campos do formulário
-    st.session_state.emissor_sec = "" 
-    st.session_state.ticker_sec = "" 
-    st.session_state.tipo_cdb_sec = "Pré-fixado" 
-    st.session_state.taxa_sec = 0.0 
-    st.session_state.vencimento_sec = datetime.date.today() + relativedelta(months=+12) 
-    st.session_state.valor_bruto_input_sec = "" 
-    
     return True # Indica que a adição foi bem-sucedida
 
-# O form é submetido, e a variável 'submitted' captura o clique.
+# ===================== FORMULÁRIO =====================
 with st.form("form_papel", clear_on_submit=False):
     col_e1, col_e2 = st.columns(2) 
 
@@ -239,13 +231,22 @@ with st.form("form_papel", clear_on_submit=False):
     valor_formatado_em_tempo_real = formatar_moeda_input(st.session_state.valor_bruto_input_sec)
     st.markdown(f"<p style='color: {TEXTO_PRINCIPAL_ST}; margin-top: 10px;'>Valor a ser adicionado: <b>R$ {valor_formatado_em_tempo_real}</b></p>", unsafe_allow_html=True)
 
-    # ⭐️ AJUSTE CRÍTICO: Remoção do on_click
+    # Captura a submissão
     submitted = st.form_submit_button("ADICIONAR PAPEL À SIMULAÇÃO", type="secondary", use_container_width=True)
 
-# ⭐️ AJUSTE CRÍTICO: Lógica de submissão e Rerun movida para fora do callback
+# ⭐️ AJUSTE CRÍTICO: Lógica de submissão, limpeza e Rerun no fluxo principal
 if submitted:
-    if adicionar_papel():
-        st.rerun() # O RERUN é executado no fluxo principal após a adição bem-sucedida
+    if adicionar_papel(data_aplicacao): # Tenta adicionar o papel
+        
+        # 🟢 LIMPEZA DOS CAMPOS (AQUI É SEGURO, antes do rerun)
+        st.session_state.emissor_sec = "" 
+        st.session_state.ticker_sec = "" 
+        st.session_state.tipo_cdb_sec = "Pré-fixado" 
+        st.session_state.taxa_sec = 0.0 
+        st.session_state.vencimento_sec = datetime.date.today() + relativedelta(months=+12) 
+        st.session_state.valor_bruto_input_sec = ""
+        
+        st.rerun() # O RERUN é executado no fluxo principal
 
 st.markdown("---")
 
@@ -289,7 +290,6 @@ st.markdown("---")
 resultados_calculados = []
 papeis_para_grafico = []
 
-# Nota: O cálculo usa 'data_aplicacao' que é obtida antes do st.stop()
 for papel in st.session_state.papeis:
     resultado, erro = calcular_papel(papel, data_aplicacao, st.session_state.cdi_benchmark_geral) 
     if resultado:
