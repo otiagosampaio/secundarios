@@ -16,26 +16,30 @@ import re
 import pandas as pd
 import numpy as np
 
-# ===================== INJEÇÃO DE CSS PARA LIMITAR A LARGURA DO CONTEÚDO (CORREÇÃO) =====================
-# A classe .block-container será limitada a 60% para centralizar os inputs e a tabela.
+# ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS =====================
 st.markdown("""
 <style>
-/* Limita o conteúdo principal (inputs, tabelas, etc.) a 60% da largura da tela */
+/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 60% da largura da tela */
 .main .block-container {
     max-width: 60% !important; 
     padding-left: 2rem;
     padding-right: 2rem;
 }
 
-/* Garante que o container interno onde o logo é renderizado seja centralizado. */
-/* O Streamlit renderiza o logo antes do .block-container, por isso ele não será afetado pelo max-width: 60%. */
+/* 2. Ajusta o tamanho do logo (máximo 400px e centraliza) */
+.stMarkdown > div > img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 400px; /* Limite o logo para que não fique imenso */
+    height: auto;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ===================== CONFIGURAÇÃO INICIAL E SESSION STATE =====================
+# ===================== CONFIGURAÇÃO INICIAL E CONSTANTES =====================
 st.set_page_config(page_title="Traders Secundários - Calculadora", layout="wide")
 
-# ===================== CONFIGURAÇÃO DE CORES (TEMA CLARO PADRÃO) =====================
 URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" # Altere para o seu logo
 TEXTO_PRINCIPAL_ST = "#222222"
 VERDE_DESTAQUE = '#2E8B57'
@@ -46,41 +50,15 @@ TAXA_CDI_MERCADO = 14.90
 # ===================== FUNÇÕES AUXILIARES =====================
 
 def carregar_logo():
-    # Esta função é usada apenas para o PDF, então o ajuste de tamanho por largura percentual 
-    # (width/height) só precisa ser feito no st.markdown, logo abaixo.
+    # Esta função é usada apenas para o PDF
     url = URL_LOGO_WHITE
     response = requests.get(url)
     img_pil = PILImage.open(PIOBytesIO(response.content))
     largura, altura = img_pil.size
     proporcao = altura / largura
-    # Ajuste para PDF: Largura dobrada para 400
     largura_desejada = 400 
     altura_calculada = largura_desejada * proporcao
     return Image(PIOBytesIO(response.content), width=largura_desejada, height=altura_calculada)
-
-def formatar_moeda_input(valor_str):
-    """Formata uma string de entrada monetária para o padrão de exibição brasileiro (000.000,00)."""
-    if valor_str is None or valor_str == "":
-        return "0,00"
-        
-    valor_limpo = valor_str.replace('R$', '').replace('.', '').replace(',', '.', 1)
-    
-    try:
-        valor_float = float(valor_limpo)
-        return f"{valor_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except ValueError:
-        return "0,00"
-
-def desformatar_moeda(valor_formatado):
-    """Converte o formato brasileiro (ponto de milhar, vírgula decimal) para float."""
-    if valor_formatado is None or valor_formatado == "":
-        return 0.0
-        
-    valor_float_str = valor_formatado.replace('R$', '').replace('.', '').replace(',', '.')
-    try:
-        return float(valor_float_str)
-    except ValueError:
-        return 0.0
 
 brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") 
@@ -93,16 +71,13 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     tipo = papel['Tipo']
     taxa_input = papel['Taxa']
 
-    # Conversão de tipo de dado: Vindo do data_editor, a data pode ser um objeto datetime.date ou pd.Timestamp
     if isinstance(data_vencimento, pd.Timestamp):
         data_vencimento = data_vencimento.date()
     elif isinstance(data_vencimento, str):
         try:
-            # Tenta converter string para date object, assumindo formato YYYY-MM-DD
             data_vencimento = datetime.datetime.strptime(data_vencimento, '%Y-%m-%d').date()
         except ValueError:
             try:
-                # Tenta converter string para date object, assumindo formato DD/MM/YYYY
                 data_vencimento = datetime.datetime.strptime(data_vencimento, '%d/%m/%Y').date()
             except ValueError:
                 return None, f"Formato de Data de Vencimento inválido para {papel.get('Ticker', 'novo papel')}"
@@ -114,10 +89,8 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     if prazo_dias <= 0:
         return None, f"Data de resgate inválida para {papel.get('Ticker', 'novo papel')}. Prazo: {prazo_dias} dias"
     
-    # Validação de valores
     if valor_investido <= 0 or taxa_input <= 0:
         return None, f"Valor investido ({valor_investido}) ou Taxa ({taxa_input}%) inválida para {papel.get('Ticker', 'novo papel')}"
-
 
     dias_ano = 360 
     taxa_anual_real = taxa_input
@@ -164,7 +137,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 
     return resultado, None
 
-# --- Inicialização Padrão ---
+# ===================== SESSION STATE =====================
 if 'papeis' not in st.session_state:
     st.session_state['papeis'] = []
 if 'cdi_benchmark_geral' not in st.session_state:
@@ -172,9 +145,8 @@ if 'cdi_benchmark_geral' not in st.session_state:
     
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
 st.markdown(
-    # CORREÇÃO DO LOGO: Removendo o max-width: 60vw para que ele fique grande
     f"""<div style="text-align: center; margin: 10px 0;">
-        <img src="{URL_LOGO_WHITE}" style="height: auto; max-width: 100%;"> 
+        <img src="{URL_LOGO_WHITE}" style="max-width: 400px; height: auto;"> 
     </div>""",
     unsafe_allow_html=True
 )
@@ -187,181 +159,118 @@ st.subheader("Dados Gerais da Simulação", divider='gray')
 c1, c2 = st.columns(2) 
 
 with c1:
-    nome_cliente = st.text_input("Nome do Cliente", "")
+    nome_cliente = st.text_input("Nome do Cliente", "João Silva")
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
 
 with c2:
-    nome_assessor = st.text_input("Nome do Assessor", "")
+    nome_assessor = st.text_input("Nome do Assessor", "Seu Nome")
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
 st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral') 
     
 st.markdown("---")
 
-# ===================== INCLUSÃO DE NOVO PAPEL (Bloco Adicionado) =====================
-
-# O seu print de inclusão mostra inputs separados, então vamos separá-los do data_editor.
-st.subheader("Inclusão de Novo Papel", divider='gray')
-
-# Usaremos um st.form para agrupar os inputs de inclusão e o botão
-with st.form(key='form_adicionar_papel', clear_on_submit=True):
-    col_e, col_t = st.columns(2)
-    with col_e:
-        emissor = st.text_input("Emissor", placeholder="Ex: Banco Alfa S.A.")
-        ticker = st.text_input("Ticker/Código", placeholder="Ex: CDB1234")
-        data_vencimento_input = st.date_input("Data de Vencimento", datetime.date.today() + relativedelta(months=+12), format="DD/MM/YYYY")
-
-    with col_t:
-        tipo_taxa = st.selectbox("Tipo de Taxa", options=["Pré-fixado", "Pós-fixado (% do CDI)"])
-        
-        # Ajusta o label do input de taxa
-        taxa_label = "Taxa Pré-fixada anual (%)" if tipo_taxa == "Pré-fixado" else "Percentual do CDI (%)"
-        taxa_input = st.number_input(taxa_label, value=17.00, step=0.01, min_value=0.01, format="%.2f")
-        
-        valor_investido_input = st.number_input("Valor investido neste papel", value=0.00, step=0.01, min_value=0.00, format="%.2f")
-
-    # Calculo simples do valor a ser adicionado (antes de submeter)
-    valor_a_adicionar = valor_investido_input 
-    st.markdown(f"**Valor a ser adicionado:** <span style='color:{COR_PRIMARIA_FORM}; font-size: 1.1em;'>{brl(valor_a_adicionar)}</span>", unsafe_allow_html=True)
-    
-    # Botão de submissão do formulário
-    submit_button = st.form_submit_button(label='ADICIONAR PAPEL À SIMULAÇÃO', type="primary", use_container_width=True)
-
-    if submit_button:
-        # Validação de Campos Obrigatórios
-        if not emissor or not ticker or valor_investido_input <= 0.00 or taxa_input <= 0.00:
-            st.error("Preencha todos os campos e garanta que Valor Investido e Taxa são maiores que zero.")
-        else:
-            # Novo papel a ser adicionado
-            novo_papel = {
-                'Emissor': emissor,
-                'Ticker': ticker,
-                'Valor': valor_investido_input,
-                'Tipo': tipo_taxa,
-                'Taxa': taxa_input,
-                'Data Vencimento': data_vencimento_input,
-            }
-            # Adiciona à lista
-            st.session_state.papeis.append(novo_papel)
-            st.success(f"Papel **{ticker}** adicionado com sucesso! Simulação atualizada.")
-            st.rerun() # Recarrega para atualizar a tabela e o cálculo
-
-
-st.markdown("---")
-
-# ===================== TABELA DE PAPÉIS ADICIONADOS (Apenas Visualização e Edição) =====================
+# ===================== TABELA DE PAPÉIS ADICIONADOS (Inclusão, Edição e Remoção pela Tabela) =====================
 
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
 # Prepara o DataFrame para o editor
 if st.session_state.papeis:
-    # 1. Cria DataFrame a partir da Session State (lista de dicionários)
     df_papeis = pd.DataFrame(st.session_state.papeis)
-    
-    # 2. Garante que os tipos estão corretos para o editor/display
-    # O .dt.date é crucial para a exibição no data_editor
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento']).dt.date 
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
-    
-    # Adiciona a coluna de Rendimento (apenas para exibição na tabela abaixo)
-    df_papeis['Rendimento Líquido'] = [r['Rendimento Líquido'] for r in df_papeis.to_dict('records')] 
-    
-    # Renomear colunas para exibição amigável
-    df_papeis_edit = df_papeis.rename(columns={
-        'Emissor': 'Emissor',
-        'Ticker': 'Ticker',
-        'Valor': 'Valor Investido (R$)',
-        'Tipo': 'Tipo de Taxa',
-        'Taxa': 'Taxa (%)',
-        'Data Vencimento': 'Vencimento',
-    })
-    
-    colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento', 'Rendimento Líquido']
-
-    st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o ícone 🗑️ na tabela.")
-
-    edited_df = st.data_editor(
-        df_papeis_edit[colunas_data_editor],
-        hide_index=True,
-        num_rows="fixed", # Agora a adição é feita no formulário acima
-        column_config={
-            "Valor Investido (R$)": st.column_config.NumberColumn(
-                "Valor Investido (R$)",
-                format="%.2f",
-                step=0.01,
-                min_value=0.01,
-            ),
-            "Tipo de Taxa": st.column_config.SelectboxColumn(
-                "Tipo de Taxa",
-                options=["Pré-fixado", "Pós-fixado (% do CDI)"],
-                required=True,
-            ),
-            "Taxa (%)": st.column_config.NumberColumn(
-                "Taxa (%)",
-                format="%.2f",
-                step=0.01,
-                min_value=0.01,
-            ),
-            "Vencimento": st.column_config.DateColumn(
-                "Vencimento",
-                format="DD/MM/YYYY",
-                min_value=datetime.date.today() + relativedelta(days=+1),
-            ),
-            "Rendimento Líquido": st.column_config.TextColumn("Rendimento Líquido (R$)", disabled=True),
-        },
-        key="data_editor_papeis"
-    )
-
-    # 3. Processar as edições e remoções do data_editor para atualizar o Session State:
-    
-    # Renomeia de volta para as chaves da função de cálculo
-    df_papeis_new = edited_df.rename(columns={
-        'Valor Investido (R$)': 'Valor',
-        'Tipo de Taxa': 'Tipo',
-        'Taxa (%)': 'Taxa',
-        'Vencimento': 'Data Vencimento', 
-    })
-
-    # Remove a coluna de rendimento para não interferir no cálculo
-    df_papeis_new = df_papeis_new.drop(columns=['Rendimento Líquido'], errors='ignore')
-
-    # Remove linhas onde os valores essenciais não são válidos (edições inválidas)
-    df_papeis_new = df_papeis_new[
-        (df_papeis_new['Valor'] > 0) & 
-        (df_papeis_new['Taxa'] > 0) &
-        (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp))))
-    ]
-
-    papeis_anteriores_len = len(st.session_state.papeis)
-    st.session_state.papeis = df_papeis_new.to_dict('records')
-
-    # Rerun se houve mudança na edição ou remoção
-    if papeis_anteriores_len != len(st.session_state.papeis):
-        st.success("Tabela de papéis atualizada. Recalculando a simulação...")
-        st.rerun()
-
-    # Botão de Limpar Lista
-    if st.button("Limpar Todos os Papéis", type="primary"):
-        st.session_state.papeis = []
-        st.rerun()
-
 else:
-    st.info("Nenhum papel adicionado. Use o formulário 'Inclusão de Novo Papel' acima.")
+    # Cria um DataFrame vazio com as colunas esperadas para permitir a adição de novas linhas
+    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
+    df_papeis.loc[0] = ['Banco Alfa S.A.', 'CDB1234', 10000.00, 'Pré-fixado', 15.00, datetime.date.today() + relativedelta(months=+12)]
+
+
+# Renomear colunas para exibição amigável
+df_papeis_edit = df_papeis.rename(columns={
+    'Emissor': 'Emissor',
+    'Ticker': 'Ticker',
+    'Valor': 'Valor Investido (R$)',
+    'Tipo': 'Tipo de Taxa',
+    'Taxa': 'Taxa (%)',
+    'Data Vencimento': 'Vencimento',
+})
+
+colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
+
+st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
+
+edited_df = st.data_editor(
+    df_papeis_edit[colunas_data_editor],
+    hide_index=True,
+    num_rows="dynamic", # Reverte para a inclusão na tabela
+    column_config={
+        "Valor Investido (R$)": st.column_config.NumberColumn(
+            "Valor Investido (R$)",
+            format="%.2f",
+            step=0.01,
+            min_value=0.01, 
+        ),
+        "Tipo de Taxa": st.column_config.SelectboxColumn(
+            "Tipo de Taxa",
+            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
+            required=True,
+        ),
+        "Taxa (%)": st.column_config.NumberColumn(
+            "Taxa (%)",
+            format="%.2f",
+            step=0.01,
+            min_value=0.01, 
+        ),
+        "Vencimento": st.column_config.DateColumn(
+            "Vencimento",
+            format="DD/MM/YYYY",
+            min_value=datetime.date.today() + relativedelta(days=+1), 
+        ),
+    },
+    key="data_editor_papeis"
+)
+
+# Processar as edições, adições e remoções do data_editor
+df_papeis_new = edited_df.rename(columns={
+    'Valor Investido (R$)': 'Valor',
+    'Tipo de Taxa': 'Tipo',
+    'Taxa (%)': 'Taxa',
+    'Vencimento': 'Data Vencimento', 
+})
+
+# Remove linhas onde os valores essenciais não são válidos 
+df_papeis_new = df_papeis_new[
+    (df_papeis_new['Valor'] > 0) & 
+    (df_papeis_new['Taxa'] > 0) &
+    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp))))
+]
+
+papeis_anteriores_len = len(st.session_state.papeis)
+st.session_state.papeis = df_papeis_new.to_dict('records')
+
+# Rerun se houve mudança significativa (edição, adição ou remoção)
+if papeis_anteriores_len != len(st.session_state.papeis):
+    st.success("Tabela de papéis atualizada. Recalculando a simulação...")
+    st.rerun()
+
+# Botão de Limpar Lista
+if st.button("Limpar Todos os Papéis", type="primary"):
+    st.session_state.papeis = []
+    st.rerun()
     
 st.markdown("---")
-
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 
 if not st.session_state.papeis:
+    st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
     st.stop()
     
 resultados_calculados = []
 papeis_para_grafico = []
 
 for papel in st.session_state.papeis:
-    # Garante que o input da tabela é numérico (caso venha do data_editor)
     papel['Valor'] = float(papel['Valor'])
     papel['Taxa'] = float(papel['Taxa'])
     
@@ -371,11 +280,9 @@ for papel in st.session_state.papeis:
         resultados_calculados.append(resultado)
         papeis_para_grafico.append(papel)
     elif erro:
-        # Se um erro de cálculo ocorrer (ex: data inválida), avise mas continue
         st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
 
 if not resultados_calculados:
-    # Este erro só aparece se houverem papéis na lista mas todos forem inválidos no cálculo
     st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
     st.stop() 
 
@@ -419,7 +326,7 @@ ax.grid(axis='y', alpha=0.3)
 plt.tight_layout() 
 st.pyplot(fig)
 
-# ===================== PDF GERAÇÃO (COM ATUALIZAÇÕES) =====================
+# ===================== PDF GERAÇÃO =====================
 def grafico_png():
     buf = BytesIO()
     
@@ -456,7 +363,7 @@ def criar_pdf_secundarios():
     styles.add(ParagraphStyle(name='DataValue', fontSize=11, fontName='Helvetica-Bold', textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='Footer', fontSize=9, alignment=1, textColor=colors.HexColor('#666666')))
     styles.add(ParagraphStyle(name='Disclaimer', fontSize=7, fontName='Helvetica-Oblique', alignment=4, textColor=colors.HexColor('#666666'), spaceBefore=3*mm, spaceAfter=0*mm))
-    styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=10*mm)) # Novo estilo para o texto CDB
+    styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=10*mm)) 
     
     styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=10, bottomPadding=10))
     
@@ -490,9 +397,7 @@ def criar_pdf_secundarios():
         ["Emissor", "Ticker", "Valor Investido", "Tipo", "Taxa", "Vencimento", "Rendimento Líquido"]
     ]
     
-    # Prepara os dados do gráfico para o PDF
     for p in papeis_para_grafico: 
-        # Garante que o vencimento é um objeto date
         vencimento_date = p['Data Vencimento']
         if isinstance(vencimento_date, pd.Timestamp):
             vencimento_date = vencimento_date.date()
@@ -553,7 +458,7 @@ def criar_pdf_secundarios():
     story.append(t_res_final)
     story.append(Spacer(1, 10*mm))
     
-    # 5. Fundamentos do CDB (Novo item)
+    # 5. Fundamentos do CDB 
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=5, spaceAfter=10))
     story.append(Paragraph("FUNDAMENTOS DO CDB", styles['SectionTitle']))
     
@@ -580,12 +485,11 @@ def criar_pdf_secundarios():
     
     story.append(Spacer(1, 10*mm))
 
-    # 7. Rodapé e Disclaimer (Atualizado)
+    # 7. Rodapé e Disclaimer 
     story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
     
-    # AJUSTE: Novo texto do disclaimer
     disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes.") 
     story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
 
