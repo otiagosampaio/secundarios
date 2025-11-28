@@ -478,7 +478,7 @@ def criar_pdf_secundarios():
     story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
-    disclaimer_text = ("A Traders Distribuidora de Valores Mobiliários Ltda., com CNPJ sob o nº 62.280.490/0001-84 é uma instituição financeira autorizada a funcionar pelo Banco Central do Brasil... [Insira o disclaimer legal completo da Traders DTVM aqui]...") 
+    disclaimer_text = ("“As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes.”") 
     story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
 
 
