@@ -57,7 +57,10 @@ def carregar_logo():
     img_pil = PILImage.open(PIOBytesIO(response.content))
     largura, altura = img_pil.size
     proporcao = altura / largura
-    largura_desejada = 30 * mm # Reduzido para padronizar o tamanho no PDF
+    
+    # AJUSTE: Aumentar largura desejada para o logo no PDF
+    largura_desejada = 80 * mm # De 30*mm para 80*mm
+    
     altura_calculada = largura_desejada * proporcao
     return Image(PIOBytesIO(response.content), width=largura_desejada, height=altura_calculada)
 
@@ -436,13 +439,13 @@ def criar_pdf_secundarios():
     # 1. Cabeçalho
     logo = carregar_logo()
     logo.hAlign = 'CENTER'
-    # AJUSTE: Redução do Spacer entre o Logo e o Título
+    # AJUSTE: Redução do Spacer entre o Logo e o Título (já feito no ajuste anterior, mantido)
     story.append(Spacer(1, 3*mm)) 
     story.append(logo)
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph("Simulação Consolidada - Papéis Secundários", styles['TitlePDF']))
     story.append(Paragraph("Projeção de Retorno com Múltiplos Emissores", getSampleStyleSheet()['Normal']))
-    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Ajustado spaceBefore/After
+    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) 
 
     # 2. Dados Gerais
     story.append(Paragraph("DADOS DA SIMULAÇÃO", styles['SectionTitle']))
@@ -479,163 +482,4 @@ def criar_pdf_secundarios():
         # AJUSTE: Mostrar apenas "Pós-fixado"
         tipo_taxa_display = "Pós-fixado" if p['Tipo'] == 'Pós-fixado (% do CDI)' else p['Tipo']
             
-        taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
-        data_tabela_papeis.append([
-            Paragraph(p['Emissor'], styles['TableCellPDF']),
-            Paragraph(p['Ticker'], styles['TableCellPDF']),
-            Paragraph(brl_pdf(p['Valor Investido']), styles['TableCellPDF']),
-            Paragraph(tipo_taxa_display, styles['TableCellPDF']), # Usando o tipo ajustado
-            Paragraph(taxa_str, styles['TableCellPDF']),
-            Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
-            Paragraph(brl_pdf(p['Rendimento Líquido']), styles['TableCellPDF']),
-        ])
-
-    colWidths_papeis = [total_width_pdf*0.18, total_width_pdf*0.12, total_width_pdf*0.15, total_width_pdf*0.12, total_width_pdf*0.15, total_width_pdf*0.13, total_width_pdf*0.15]
-    t_papeis = Table(data_tabela_papeis, colWidths=colWidths_papeis)
-    t_papeis.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), 
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
-    ]))
-    story.append(t_papeis)
-    story.append(Spacer(1, 5*mm))
-
-    # 4. Resultado Consolidado (Tabela Azul)
-    
-    resultado_completo = [
-        [Paragraph("<b>RESULTADO CONSOLIDADO</b>", styles['ResultTitleLarge']), "", "", ""],
-        ["TOTAL INVESTIDO", "MONTANTE BRUTO", "TOTAL IMPOSTOS", "MONTANTE LÍQUIDO"],
-        [brl_pdf(total_investido), brl_pdf(total_bruto), brl_pdf(total_impostos), brl_pdf(total_liquido)],
-        [Paragraph(f"Rentabilidade Líquida Efetiva: <font size='10' color='white'><b>{rentabilidade_efetiva:.2f}%</b></font>", styles['ResultTitleLarge']), "", "", ""],
-    ]
-    
-    colWidths_4 = [total_width_pdf/4] * 4
-    t_res_final = Table(resultado_completo, colWidths=colWidths_4)
-    t_res_final.setStyle(TableStyle([
-        ('SPAN', (0,0), (3,0)),
-        ('SPAN', (0,3), (3,3)),
-        ('BACKGROUND', (0,0), (-1,3), AZUL_TABELA_PDF),
-        ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
-        ('FONTSIZE', (0,1), (3,1), 9),
-        ('FONTNAME', (0,1), (3,1), 'Helvetica-Bold'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('GRID', (0,0), (-1,-1), 0, colors.transparent),
-    ]))
-    story.append(t_res_final)
-    story.append(Spacer(1, 5*mm))
-    
-    # 5. Fundamentos do CDB 
-    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Ajustado spaceBefore/After
-    story.append(Paragraph("FUNDAMENTOS DO CDB", styles['SectionTitle']))
-    
-    cdb_text = (
-        "O <b>CDB</b> (Certificado de Depósito Bancário) é um título de <b>renda fixa</b> emitido por bancos para captar recursos. É considerado "
-        "um <b>investimento de baixo risco</b> e conta com a <b>garantia do FGC</b> (Fundo Garantidor de Créditos), que cobre até <b>R$ 250.000</b> "
-        "por CPF e por instituição financeira, oferecendo <b>segurança</b> ao investidor. A rentabilidade pode ser <b>Pré-fixada</b> (taxa "
-        "definida no início) ou <b>Pós-fixada</b> (geralmente atrelada a um percentual do CDI). "
-        "Em relação às características de resgate, a <b>Liquidez</b> do CDB pode ser diária (ideal para reserva de emergência) ou "
-        "apenas no vencimento (oferecendo historicamente maior retorno). A <b>tributação</b> segue a tabela regressiva do Imposto de "
-        "Renda (<b>IR</b>), onde o imposto diminui quanto maior o prazo do investimento (chegando a 15% após 720 dias). O Imposto "
-        "sobre Operações Financeiras (<b>IOF</b>) é isento para resgates feitos após 30 dias."
-    )
-    story.append(Paragraph(cdb_text, styles['CDBText']))
-    
-    story.append(PageBreak())
-    
-    # 6. Gráfico - Timeline de Liquidez 
-    story.append(Paragraph("TIMELINE DE LIQUIDEZ: VALOR INVESTIDO POR VENCIMENTO", styles['SectionTitle'])) 
-    
-    img = Image(grafico_png(), width=160*mm, height=100*mm) 
-    img.hAlign = 'CENTER'
-    story.append(img)
-    
-    story.append(Spacer(1, 5*mm))
-
-    # --- NOVO BLOCO: TABELA DE DETALHAMENTO POR PAPEL ---
-    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
-    story.append(Paragraph("DETALHAMENTO POR PAPEL E TRIBUTAÇÃO", styles['SectionTitle']))
-    
-    data_tabela_detalhe = [
-        [Paragraph("Papel", styles['TableHeaderPDF']), 
-         Paragraph("Vencimento", styles['TableHeaderPDF']), 
-         Paragraph("Montante Bruto", styles['TableHeaderPDF']), 
-         Paragraph("Alíquota IR", styles['TableHeaderPDF']),
-         Paragraph("Imposto IR/IOF", styles['TableHeaderPDF']), 
-         Paragraph("Montante Líquido", styles['TableHeaderPDF'])]
-    ]
-    
-    for p in papeis_para_grafico: 
-        vencimento_date = p['Data Vencimento']
-        if isinstance(vencimento_date, pd.Timestamp):
-            vencimento_date = vencimento_date.date()
-        elif isinstance(vencimento_date, str):
-            try:
-                vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
-            except:
-                vencimento_date = datetime.date.today() 
-            
-        data_tabela_detalhe.append([
-            Paragraph(p['Ticker'], styles['TableCellPDF']),
-            Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
-            Paragraph(brl_pdf(p['Montante Bruto']), styles['TableCellPDF']),
-            Paragraph(f"{p['Alíquota IR']:.1f}%", styles['TableCellPDF']),
-            Paragraph(brl_pdf(p['Total Impostos']), styles['TableCellPDF']),
-            Paragraph(brl_pdf(p['Montante Líquido']), styles['TableCellPDF']),
-        ])
-
-    colWidths_detalhe = [total_width_pdf*0.15, total_width_pdf*0.15, total_width_pdf*0.2, total_width_pdf*0.15, total_width_pdf*0.2, total_width_pdf*0.15]
-    t_detalhe = Table(data_tabela_detalhe, colWidths=colWidths_detalhe)
-    t_detalhe.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), 
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-    ]))
-    story.append(t_detalhe)
-    story.append(Spacer(1, 5*mm))
-    # --- FIM NOVO BLOCO ---
-
-
-    # 7. Rodapé e Disclaimer 
-    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
-    story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
-    story.append(Spacer(1, 3*mm))
-    story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
-    
-    disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes. Os valores de liquidez representam o Capital Inicial Investido (sem considerar a rentabilidade) que estará disponível na data de vencimento.") 
-    story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
-
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
-
-# ===================== BOTÃO PDF =====================
-if st.button("BAIXAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
-    with st.spinner("Gerando sua proposta premium consolidada..."):
-        try:
-            pdf_data = criar_pdf_secundarios()
-            b64 = base64.b64encode(pdf_data).decode()
-            nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
-            href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
-            st.markdown(href, unsafe_allow_html=True)
-            st.balloons()
-            st.success("Proposta premium gerada com sucesso!")
-        except Exception as e:
-            st.error(f"Ocorreu um erro ao gerar o PDF: {e}")
-
-# ===================== RODAPÉ STREAMLIT =====================
-st.markdown(
-    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
-    unsafe_allow_html=True
-)
+        taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado'
