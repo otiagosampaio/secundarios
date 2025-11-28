@@ -337,7 +337,7 @@ ax.grid(axis='y', alpha=0.3)
 plt.tight_layout() 
 st.pyplot(fig)
 
-# ===================== PDF GERAÇÃO =====================
+# ===================== PDF GERAÇÃO (COM ATUALIZAÇÕES) =====================
 def grafico_png():
     buf = BytesIO()
     
@@ -374,6 +374,7 @@ def criar_pdf_secundarios():
     styles.add(ParagraphStyle(name='DataValue', fontSize=11, fontName='Helvetica-Bold', textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='Footer', fontSize=9, alignment=1, textColor=colors.HexColor('#666666')))
     styles.add(ParagraphStyle(name='Disclaimer', fontSize=7, fontName='Helvetica-Oblique', alignment=4, textColor=colors.HexColor('#666666'), spaceBefore=3*mm, spaceAfter=0*mm))
+    styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=10*mm)) # Novo estilo para o texto CDB
     
     styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=10, bottomPadding=10))
     
@@ -464,8 +465,25 @@ def criar_pdf_secundarios():
     story.append(t_res_final)
     story.append(Spacer(1, 10*mm))
     
-    # 5. Gráfico (Página 2)
+    # 5. Fundamentos do CDB (Novo item)
+    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=5, spaceAfter=10))
+    story.append(Paragraph("FUNDAMENTOS DO CDB", styles['SectionTitle']))
+    
+    cdb_text = (
+        "O **CDB** (Certificado de Depósito Bancário) é um título de **renda fixa** emitido por bancos para captar recursos. É considerado "
+        "um **investimento de baixo risco** e conta com a **garantia do FGC** (Fundo Garantidor de Créditos), que cobre até **R$ 250.000** "
+        "por CPF e por instituição financeira, oferecendo **segurança** ao investidor. A rentabilidade pode ser **Pré-fixada** (taxa "
+        "definida no início) ou **Pós-fixada** (geralmente atrelada a um percentual do CDI). "
+        "Em relação às características de resgate, a **Liquidez** do CDB pode ser diária (ideal para reserva de emergência) ou "
+        "apenas no vencimento (oferecendo historicamente maior retorno). A **tributação** segue a tabela regressiva do Imposto de "
+        "Renda (**IR**), onde o imposto diminui quanto maior o prazo do investimento (chegando a 15% após 720 dias). O Imposto "
+        "sobre Operações Financeiras (**IOF**) é isento para resgates feitos após 30 dias."
+    )
+    story.append(Paragraph(cdb_text, styles['CDBText']))
+    
     story.append(PageBreak())
+    
+    # 6. Gráfico 
     story.append(Paragraph("PROJEÇÃO DE MONTANTE BRUTO POR PAPEL", styles['SectionTitle'])) 
     
     img = Image(grafico_png(), width=160*mm, height=80*mm) 
@@ -474,11 +492,13 @@ def criar_pdf_secundarios():
     
     story.append(Spacer(1, 10*mm))
 
-    # 6. Rodapé e Disclaimer
+    # 7. Rodapé e Disclaimer (Atualizado)
     story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
-    disclaimer_text = ("“As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes.”") 
+    
+    # ⭐️ AJUSTE: Novo texto do disclaimer
+    disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes.") 
     story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
 
 
