@@ -21,8 +21,8 @@ URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" #
 TEXTO_PRINCIPAL_ST = "#222222"
 VERDE_DESTAQUE = '#2E8B57'
 AZUL_TABELA_PDF = colors.HexColor("#864df4")
-COR_PRIMARIA_FORM = '#6B48FF' # Cor para o botão de adicionar
-TAXA_CDI_MERCADO = 14.90 # Valor de CDI atual
+COR_PRIMARIA_FORM = '#6B48FF' 
+TAXA_CDI_MERCADO = 14.90 
 
 # ===================== FUNÇÕES AUXILIARES =====================
 
@@ -38,7 +38,6 @@ def carregar_logo():
 
 def formatar_moeda_input(valor_str):
     """Formata uma string de entrada monetária para o padrão de exibição brasileiro (000.000,00)."""
-    # Trata None/vazio como "0,00" para evitar erros na formatação
     if valor_str is None or valor_str == "":
         return "0,00"
         
@@ -134,19 +133,19 @@ if 'papeis' not in st.session_state:
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
     
-# ⭐️ AJUSTE DE INICIALIZAÇÃO: Todos os campos de texto/número agora iniciam vazios/zero
+# --- Inicialização para campos vazios ---
 if 'emissor_sec' not in st.session_state:
     st.session_state['emissor_sec'] = ""
 if 'ticker_sec' not in st.session_state:
     st.session_state['ticker_sec'] = ""
 if 'tipo_cdb_sec' not in st.session_state:
-    st.session_state['tipo_cdb_sec'] = "Pré-fixado" # Este precisa de um valor padrão para o selectbox
+    st.session_state['tipo_cdb_sec'] = "Pré-fixado" 
 if 'taxa_sec' not in st.session_state:
-    st.session_state['taxa_sec'] = 0.0 # Valor inicial zero para número
+    st.session_state['taxa_sec'] = 0.0 
 if 'vencimento_sec' not in st.session_state:
-    st.session_state['vencimento_sec'] = datetime.date.today() + relativedelta(months=+12) # Data precisa de um valor inicial para date_input
+    st.session_state['vencimento_sec'] = datetime.date.today() + relativedelta(months=+12) 
 if 'valor_bruto_input_sec' not in st.session_state:
-    st.session_state['valor_bruto_input_sec'] = "" # String vazia para o campo de moeda
+    st.session_state['valor_bruto_input_sec'] = "" 
 
 
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
@@ -164,13 +163,12 @@ st.markdown("---")
 st.subheader("Dados Gerais da Simulação", divider='gray') 
 c1, c2 = st.columns(2) 
 
+# ⭐️ AJUSTE: Campos de texto geral vazios
 with c1:
-    # ⭐️ AJUSTE: Campos de texto geral também vazios no início
     nome_cliente = st.text_input("Nome do Cliente", "")
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
 
 with c2:
-    # ⭐️ AJUSTE: Campos de texto geral também vazios no início
     nome_assessor = st.text_input("Nome do Assessor", "")
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
@@ -183,16 +181,16 @@ st.markdown("---")
 st.subheader("Inclusão de Novo Papel", divider='gray')
 
 def adicionar_papel():
+    # Esta função agora só adiciona o papel e limpa o estado, sem forçar o rerun
     valor_investido_float = desformatar_moeda(formatar_moeda_input(st.session_state.valor_bruto_input_sec))
 
-    # Validação (permanece a mesma)
     if valor_investido_float <= 0:
         st.error("O valor investido deve ser maior que zero.")
-        return
+        return False # Indica que a adição falhou
     
     if st.session_state.vencimento_sec <= data_aplicacao:
         st.error("A Data de Vencimento deve ser posterior à Data de Aplicação.")
-        return
+        return False # Indica que a adição falhou
 
     novo_papel = {
         'Emissor': st.session_state.emissor_sec,
@@ -205,21 +203,21 @@ def adicionar_papel():
     
     st.session_state.papeis.append(novo_papel)
     
-    # ⭐️ AJUSTE DE LIMPEZA: Limpar completamente os campos do formulário redefinindo as chaves
-    st.session_state.emissor_sec = "" # String vazia
-    st.session_state.ticker_sec = "" # String vazia
-    st.session_state.tipo_cdb_sec = "Pré-fixado" # Selectbox volta para o primeiro item
-    st.session_state.taxa_sec = 0.0 # Valor zero
-    st.session_state.vencimento_sec = datetime.date.today() + relativedelta(months=+12) # Data de vencimento default
-    st.session_state.valor_bruto_input_sec = "" # String vazia
+    # Limpar completamente os campos do formulário
+    st.session_state.emissor_sec = "" 
+    st.session_state.ticker_sec = "" 
+    st.session_state.tipo_cdb_sec = "Pré-fixado" 
+    st.session_state.taxa_sec = 0.0 
+    st.session_state.vencimento_sec = datetime.date.today() + relativedelta(months=+12) 
+    st.session_state.valor_bruto_input_sec = "" 
+    
+    return True # Indica que a adição foi bem-sucedida
 
-    st.rerun() 
-
+# O form é submetido, e a variável 'submitted' captura o clique.
 with st.form("form_papel", clear_on_submit=False):
     col_e1, col_e2 = st.columns(2) 
 
     with col_e1:
-        # Inputs usam key e assumem o valor vazio/zero do session state na inicialização
         st.text_input("Emissor", key="emissor_sec") 
         st.text_input("Ticker/Código", key="ticker_sec") 
         st.date_input("Data de Vencimento", key="vencimento_sec", format="DD/MM/YYYY")
@@ -228,26 +226,30 @@ with st.form("form_papel", clear_on_submit=False):
         tipo_cdb_sec = st.selectbox("Tipo de Taxa", ["Pré-fixado", "Pós-fixado (% do CDI)"], key="tipo_cdb_sec")
         
         if st.session_state.tipo_cdb_sec == "Pós-fixado (% do CDI)":
-            st.number_input("Percentual do CDI (%)", step=1.0, key="taxa_sec")
+            st.number_input("Percentual do CDI (%)", step=1.0, key="taxa_sec", min_value=0.0)
         else:
-            st.number_input("Taxa Pré-fixada anual (%)", step=0.05, key="taxa_sec")
+            st.number_input("Taxa Pré-fixada anual (%)", step=0.05, key="taxa_sec", min_value=0.0)
         
-        # Input de valor: deve ser string vazia na inicialização
         st.text_input(
             label="Valor investido neste papel", 
             placeholder="Ex: 100000,00",
             key="valor_bruto_input_sec"
         )
         
-    # Feedback em tempo real (agora trata string vazia retornando R$ 0,00)
     valor_formatado_em_tempo_real = formatar_moeda_input(st.session_state.valor_bruto_input_sec)
     st.markdown(f"<p style='color: {TEXTO_PRINCIPAL_ST}; margin-top: 10px;'>Valor a ser adicionado: <b>R$ {valor_formatado_em_tempo_real}</b></p>", unsafe_allow_html=True)
 
-    st.form_submit_button("ADICIONAR PAPEL À SIMULAÇÃO", on_click=adicionar_papel, type="secondary", use_container_width=True)
+    # ⭐️ AJUSTE CRÍTICO: Remoção do on_click
+    submitted = st.form_submit_button("ADICIONAR PAPEL À SIMULAÇÃO", type="secondary", use_container_width=True)
+
+# ⭐️ AJUSTE CRÍTICO: Lógica de submissão e Rerun movida para fora do callback
+if submitted:
+    if adicionar_papel():
+        st.rerun() # O RERUN é executado no fluxo principal após a adição bem-sucedida
 
 st.markdown("---")
 
-# ===================== TABELA DE PAPÉIS ADICIONADOS (Restante do Código Omitido) =====================
+# ===================== TABELA DE PAPÉIS ADICIONADOS =====================
 
 if not st.session_state.papeis:
     st.info("Nenhum papel adicionado. Use o formulário acima para começar a simulação.")
@@ -287,6 +289,7 @@ st.markdown("---")
 resultados_calculados = []
 papeis_para_grafico = []
 
+# Nota: O cálculo usa 'data_aplicacao' que é obtida antes do st.stop()
 for papel in st.session_state.papeis:
     resultado, erro = calcular_papel(papel, data_aplicacao, st.session_state.cdi_benchmark_geral) 
     if resultado:
@@ -339,8 +342,7 @@ ax.grid(axis='y', alpha=0.3)
 plt.tight_layout() 
 st.pyplot(fig)
 
-# ===================== PDF GERAÇÃO (Restante do Código Omitido) =====================
-# ... (Funções de PDF) ...
+# ===================== PDF GERAÇÃO =====================
 def grafico_png():
     buf = BytesIO()
     
