@@ -218,7 +218,7 @@ with st.form("form_papel", clear_on_submit=True):
         st.date_input("Data de Vencimento", key="vencimento_sec", format="DD/MM/YYYY")
             
     with col_e2:
-        tipo_cdb_sec = st.selectbox("Tipo de Taxa", ["Pré-fixado", "Pós-fixado (% do CDI)"], key="tipo_cdb_sec")
+        tipo_cdb_sec = st.selectbox("Tipo de Taxa", ["Pré-fixado", "Pós-fixado"], key="tipo_cdb_sec")
         
         if st.session_state.tipo_cdb_sec == "Pós-fixado (% do CDI)":
             st.number_input("Percentual do CDI (%)", step=1.0, key="taxa_sec", min_value=0.0)
