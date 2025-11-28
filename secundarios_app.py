@@ -16,25 +16,25 @@ import re
 import pandas as pd
 import numpy as np
 
-# ===================== INJEÇÃO DE CSS PARA LIMITAR A LARGURA DO CONTEÚDO (NOVO) =====================
-# Isso forçará o conteúdo principal a ter no máximo 60% da largura da tela, 
-# mas centralizado (usando margin: auto).
+# ===================== INJEÇÃO DE CSS PARA LIMITAR A LARGURA DO CONTEÚDO (CORREÇÃO) =====================
+# A classe .block-container será limitada a 60% para centralizar os inputs e a tabela.
 st.markdown("""
 <style>
+/* Limita o conteúdo principal (inputs, tabelas, etc.) a 60% da largura da tela */
 .main .block-container {
     max-width: 60% !important; 
     padding-left: 2rem;
     padding-right: 2rem;
 }
 
-/* Garante que o container interno onde o logo é renderizado seja centralizado */
-.stMarkdown > div > img {
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-}
+/* Garante que o container interno onde o logo é renderizado seja centralizado. */
+/* O Streamlit renderiza o logo antes do .block-container, por isso ele não será afetado pelo max-width: 60%. */
 </style>
 """, unsafe_allow_html=True)
+
+# ===================== CONFIGURAÇÃO INICIAL E SESSION STATE =====================
+st.set_page_config(page_title="Traders Secundários - Calculadora", layout="wide")
+
 # ===================== CONFIGURAÇÃO DE CORES (TEMA CLARO PADRÃO) =====================
 URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" # Altere para o seu logo
 TEXTO_PRINCIPAL_ST = "#222222"
@@ -164,9 +164,6 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 
     return resultado, None
 
-# ===================== CONFIGURAÇÃO INICIAL E SESSION STATE =====================
-st.set_page_config(page_title="Traders Secundários - Calculadora", layout="wide")
-
 # --- Inicialização Padrão ---
 if 'papeis' not in st.session_state:
     st.session_state['papeis'] = []
@@ -175,9 +172,9 @@ if 'cdi_benchmark_geral' not in st.session_state:
     
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
 st.markdown(
-    # AJUSTE: Usando max-width: 60vw e height: auto para limitar o tamanho do logo a 60% da tela
+    # CORREÇÃO DO LOGO: Removendo o max-width: 60vw para que ele fique grande
     f"""<div style="text-align: center; margin: 10px 0;">
-        <img src="{URL_LOGO_WHITE}" style="max-width: 60vw; height: auto;"> 
+        <img src="{URL_LOGO_WHITE}" style="height: auto; max-width: 100%;"> 
     </div>""",
     unsafe_allow_html=True
 )
@@ -201,114 +198,170 @@ st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_be
     
 st.markdown("---")
 
-# ===================== TABELA DE PAPÉIS ADICIONADOS (Inclusão, Edição e Remoção) =====================
+# ===================== INCLUSÃO DE NOVO PAPEL (Bloco Adicionado) =====================
+
+# O seu print de inclusão mostra inputs separados, então vamos separá-los do data_editor.
+st.subheader("Inclusão de Novo Papel", divider='gray')
+
+# Usaremos um st.form para agrupar os inputs de inclusão e o botão
+with st.form(key='form_adicionar_papel', clear_on_submit=True):
+    col_e, col_t = st.columns(2)
+    with col_e:
+        emissor = st.text_input("Emissor", placeholder="Ex: Banco Alfa S.A.")
+        ticker = st.text_input("Ticker/Código", placeholder="Ex: CDB1234")
+        data_vencimento_input = st.date_input("Data de Vencimento", datetime.date.today() + relativedelta(months=+12), format="DD/MM/YYYY")
+
+    with col_t:
+        tipo_taxa = st.selectbox("Tipo de Taxa", options=["Pré-fixado", "Pós-fixado (% do CDI)"])
+        
+        # Ajusta o label do input de taxa
+        taxa_label = "Taxa Pré-fixada anual (%)" if tipo_taxa == "Pré-fixado" else "Percentual do CDI (%)"
+        taxa_input = st.number_input(taxa_label, value=17.00, step=0.01, min_value=0.01, format="%.2f")
+        
+        valor_investido_input = st.number_input("Valor investido neste papel", value=0.00, step=0.01, min_value=0.00, format="%.2f")
+
+    # Calculo simples do valor a ser adicionado (antes de submeter)
+    valor_a_adicionar = valor_investido_input 
+    st.markdown(f"**Valor a ser adicionado:** <span style='color:{COR_PRIMARIA_FORM}; font-size: 1.1em;'>{brl(valor_a_adicionar)}</span>", unsafe_allow_html=True)
+    
+    # Botão de submissão do formulário
+    submit_button = st.form_submit_button(label='ADICIONAR PAPEL À SIMULAÇÃO', type="primary", use_container_width=True)
+
+    if submit_button:
+        # Validação de Campos Obrigatórios
+        if not emissor or not ticker or valor_investido_input <= 0.00 or taxa_input <= 0.00:
+            st.error("Preencha todos os campos e garanta que Valor Investido e Taxa são maiores que zero.")
+        else:
+            # Novo papel a ser adicionado
+            novo_papel = {
+                'Emissor': emissor,
+                'Ticker': ticker,
+                'Valor': valor_investido_input,
+                'Tipo': tipo_taxa,
+                'Taxa': taxa_input,
+                'Data Vencimento': data_vencimento_input,
+            }
+            # Adiciona à lista
+            st.session_state.papeis.append(novo_papel)
+            st.success(f"Papel **{ticker}** adicionado com sucesso! Simulação atualizada.")
+            st.rerun() # Recarrega para atualizar a tabela e o cálculo
+
+
+st.markdown("---")
+
+# ===================== TABELA DE PAPÉIS ADICIONADOS (Apenas Visualização e Edição) =====================
 
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
 # Prepara o DataFrame para o editor
 if st.session_state.papeis:
+    # 1. Cria DataFrame a partir da Session State (lista de dicionários)
     df_papeis = pd.DataFrame(st.session_state.papeis)
-    # Garante que as colunas críticas estão no formato correto para o editor
+    
+    # 2. Garante que os tipos estão corretos para o editor/display
+    # O .dt.date é crucial para a exibição no data_editor
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento']).dt.date 
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
+    
+    # Adiciona a coluna de Rendimento (apenas para exibição na tabela abaixo)
+    df_papeis['Rendimento Líquido'] = [r['Rendimento Líquido'] for r in df_papeis.to_dict('records')] 
+    
+    # Renomear colunas para exibição amigável
+    df_papeis_edit = df_papeis.rename(columns={
+        'Emissor': 'Emissor',
+        'Ticker': 'Ticker',
+        'Valor': 'Valor Investido (R$)',
+        'Tipo': 'Tipo de Taxa',
+        'Taxa': 'Taxa (%)',
+        'Data Vencimento': 'Vencimento',
+    })
+    
+    colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento', 'Rendimento Líquido']
+
+    st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o ícone 🗑️ na tabela.")
+
+    edited_df = st.data_editor(
+        df_papeis_edit[colunas_data_editor],
+        hide_index=True,
+        num_rows="fixed", # Agora a adição é feita no formulário acima
+        column_config={
+            "Valor Investido (R$)": st.column_config.NumberColumn(
+                "Valor Investido (R$)",
+                format="%.2f",
+                step=0.01,
+                min_value=0.01,
+            ),
+            "Tipo de Taxa": st.column_config.SelectboxColumn(
+                "Tipo de Taxa",
+                options=["Pré-fixado", "Pós-fixado (% do CDI)"],
+                required=True,
+            ),
+            "Taxa (%)": st.column_config.NumberColumn(
+                "Taxa (%)",
+                format="%.2f",
+                step=0.01,
+                min_value=0.01,
+            ),
+            "Vencimento": st.column_config.DateColumn(
+                "Vencimento",
+                format="DD/MM/YYYY",
+                min_value=datetime.date.today() + relativedelta(days=+1),
+            ),
+            "Rendimento Líquido": st.column_config.TextColumn("Rendimento Líquido (R$)", disabled=True),
+        },
+        key="data_editor_papeis"
+    )
+
+    # 3. Processar as edições e remoções do data_editor para atualizar o Session State:
+    
+    # Renomeia de volta para as chaves da função de cálculo
+    df_papeis_new = edited_df.rename(columns={
+        'Valor Investido (R$)': 'Valor',
+        'Tipo de Taxa': 'Tipo',
+        'Taxa (%)': 'Taxa',
+        'Vencimento': 'Data Vencimento', 
+    })
+
+    # Remove a coluna de rendimento para não interferir no cálculo
+    df_papeis_new = df_papeis_new.drop(columns=['Rendimento Líquido'], errors='ignore')
+
+    # Remove linhas onde os valores essenciais não são válidos (edições inválidas)
+    df_papeis_new = df_papeis_new[
+        (df_papeis_new['Valor'] > 0) & 
+        (df_papeis_new['Taxa'] > 0) &
+        (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp))))
+    ]
+
+    papeis_anteriores_len = len(st.session_state.papeis)
+    st.session_state.papeis = df_papeis_new.to_dict('records')
+
+    # Rerun se houve mudança na edição ou remoção
+    if papeis_anteriores_len != len(st.session_state.papeis):
+        st.success("Tabela de papéis atualizada. Recalculando a simulação...")
+        st.rerun()
+
+    # Botão de Limpar Lista
+    if st.button("Limpar Todos os Papéis", type="primary"):
+        st.session_state.papeis = []
+        st.rerun()
+
 else:
-    # Cria um DataFrame vazio com as colunas esperadas para permitir a adição de novas linhas
-    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
-    # Adiciona uma linha vazia padrão para facilitar a primeira inclusão
-    df_papeis.loc[0] = ['', '', 0.01, 'Pré-fixado', 0.01, datetime.date.today() + relativedelta(months=+12)]
-
-
-# Renomear colunas para exibição amigável
-df_papeis_edit = df_papeis.rename(columns={
-    'Emissor': 'Emissor',
-    'Ticker': 'Ticker',
-    'Valor': 'Valor Investido (R$)',
-    'Tipo': 'Tipo de Taxa',
-    'Taxa': 'Taxa (%)',
-    'Data Vencimento': 'Vencimento',
-})
-
-colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
-
-st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
-
-edited_df = st.data_editor(
-    df_papeis_edit[colunas_data_editor],
-    hide_index=True,
-    num_rows="dynamic", # Permite que o usuário adicione ou remova linhas
-    column_config={
-        "Valor Investido (R$)": st.column_config.NumberColumn(
-            "Valor Investido (R$)",
-            format="%.2f",
-            step=0.01,
-            min_value=0.01, # Mínimo para investimento
-        ),
-        "Tipo de Taxa": st.column_config.SelectboxColumn(
-            "Tipo de Taxa",
-            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
-            required=True,
-        ),
-        "Taxa (%)": st.column_config.NumberColumn(
-            "Taxa (%)",
-            format="%.2f",
-            step=0.01,
-            min_value=0.01, # Mínimo para taxa
-        ),
-        "Vencimento": st.column_config.DateColumn(
-            "Vencimento",
-            format="DD/MM/YYYY",
-            min_value=datetime.date.today() + relativedelta(days=+1), # Vencimento deve ser no futuro
-        ),
-    },
-    key="data_editor_papeis"
-)
-
-# Processar as edições, adições e remoções do data_editor
-# 1. Conversão e Limpeza:
-df_papeis_new = edited_df.rename(columns={
-    'Valor Investido (R$)': 'Valor',
-    'Tipo de Taxa': 'Tipo',
-    'Taxa (%)': 'Taxa',
-    'Vencimento': 'Data Vencimento', # Coluna renomeada
-})
-
-# Remove linhas onde os valores essenciais não são válidos (como linhas adicionadas vazias)
-df_papeis_new = df_papeis_new[
-    (df_papeis_new['Valor'] > 0) & 
-    (df_papeis_new['Taxa'] > 0) &
-    # CORREÇÃO: Usar 'Data Vencimento' no filtro, que é o nome após o rename
-    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp))))
-]
-
-
-# 2. Atualização da Session State:
-papeis_anteriores_len = len(st.session_state.papeis)
-st.session_state.papeis = df_papeis_new.to_dict('records')
-
-# Rerun se houve mudança significativa (edição, adição ou remoção)
-if papeis_anteriores_len != len(st.session_state.papeis):
-    st.success("Tabela de papéis atualizada. Recalculando a simulação...")
-    st.rerun()
-
-# Botão de Limpar Lista
-if st.button("Limpar Todos os Papéis", type="primary"):
-    st.session_state.papeis = []
-    st.rerun()
+    st.info("Nenhum papel adicionado. Use o formulário 'Inclusão de Novo Papel' acima.")
     
 st.markdown("---")
+
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 
 if not st.session_state.papeis:
-    st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura.")
     st.stop()
     
 resultados_calculados = []
 papeis_para_grafico = []
 
 for papel in st.session_state.papeis:
-    # Garante que o input da tabela é numérico
+    # Garante que o input da tabela é numérico (caso venha do data_editor)
     papel['Valor'] = float(papel['Valor'])
     papel['Taxa'] = float(papel['Taxa'])
     
@@ -318,11 +371,13 @@ for papel in st.session_state.papeis:
         resultados_calculados.append(resultado)
         papeis_para_grafico.append(papel)
     elif erro:
+        # Se um erro de cálculo ocorrer (ex: data inválida), avise mas continue
         st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
 
 if not resultados_calculados:
+    # Este erro só aparece se houverem papéis na lista mas todos forem inválidos no cálculo
     st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
-    st.stop() # Parar a execução se não houver dados válidos
+    st.stop() 
 
 total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
 total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
