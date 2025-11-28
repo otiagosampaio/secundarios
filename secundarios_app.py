@@ -77,14 +77,16 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
         data_vencimento = data_vencimento.date()
     elif isinstance(data_vencimento, str):
         try:
-            # Tenta converter string para date object, assumindo formato DD/MM/YYYY ou YYYY-MM-DD
+            # Tenta converter string para date object, assumindo formato YYYY-MM-DD
             data_vencimento = datetime.datetime.strptime(data_vencimento, '%Y-%m-%d').date()
         except ValueError:
             try:
+                # Tenta converter string para date object, assumindo formato DD/MM/YYYY
                 data_vencimento = datetime.datetime.strptime(data_vencimento, '%d/%m/%Y').date()
             except ValueError:
                 return None, f"Formato de Data de Vencimento inválido para {papel.get('Ticker', 'novo papel')}"
-
+    elif data_vencimento is None:
+        return None, f"Data de Vencimento nula para {papel.get('Ticker', 'novo papel')}"
 
     prazo_dias = (data_vencimento - data_aplicacao).days
     
@@ -192,7 +194,7 @@ else:
     # Cria um DataFrame vazio com as colunas esperadas para permitir a adição de novas linhas
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
     # Adiciona uma linha vazia padrão para facilitar a primeira inclusão
-    df_papeis.loc[0] = ['', '', 0.0, 'Pré-fixado', 0.0, datetime.date.today() + relativedelta(months=+12)]
+    df_papeis.loc[0] = ['', '', 0.01, 'Pré-fixado', 0.01, datetime.date.today() + relativedelta(months=+12)]
 
 
 # Renomear colunas para exibição amigável
@@ -207,7 +209,7 @@ df_papeis_edit = df_papeis.rename(columns={
 
 colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
 
-st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+** na parte inferior da tabela. ")
+st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
 
 edited_df = st.data_editor(
     df_papeis_edit[colunas_data_editor],
@@ -246,29 +248,33 @@ df_papeis_new = edited_df.rename(columns={
     'Valor Investido (R$)': 'Valor',
     'Tipo de Taxa': 'Tipo',
     'Taxa (%)': 'Taxa',
-    'Vencimento': 'Data Vencimento',
+    'Vencimento': 'Data Vencimento', # Coluna renomeada
 })
 
 # Remove linhas onde os valores essenciais não são válidos (como linhas adicionadas vazias)
 df_papeis_new = df_papeis_new[
     (df_papeis_new['Valor'] > 0) & 
     (df_papeis_new['Taxa'] > 0) &
-    (df_papeis_new['Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp))))
+    # CORREÇÃO: Usar 'Data Vencimento' no filtro, que é o nome após o rename
+    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp))))
 ]
 
 
 # 2. Atualização da Session State:
-papeis_anteriores = st.session_state.papeis
+papeis_anteriores_len = len(st.session_state.papeis)
 st.session_state.papeis = df_papeis_new.to_dict('records')
 
 # Rerun se houve mudança significativa (edição, adição ou remoção)
-if len(papeis_anteriores) != len(st.session_state.papeis) or (
-    df_papeis_new.equals(df_papeis) is False and len(st.session_state.papeis) > 0
-):
-    # Condição para rerunning só se houver alterações
+if papeis_anteriores_len != len(st.session_state.papeis):
     st.success("Tabela de papéis atualizada. Recalculando a simulação...")
     st.rerun()
 
+# Rerun para edições que não mudaram o número de linhas (ex: mudança de taxa/valor)
+# Uma maneira simples é comparar a representação hash ou simplesmente usar o estado do data_editor
+# Streamlit costuma fazer o rerunning automático quando o data_editor altera o estado,
+# mas se a validação acima filtrou linhas, o rerunning é manual.
+# Para edições *válidas* que alteram valores, o Streamlit já cuida, a menos que o filtro
+# tenha alterado a lista de `st.session_state.papeis`.
 
 # Botão de Limpar Lista
 if st.button("Limpar Todos os Papéis", type="primary"):
