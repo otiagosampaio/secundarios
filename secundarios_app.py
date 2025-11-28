@@ -32,7 +32,7 @@ def carregar_logo():
     img_pil = PILImage.open(PIOBytesIO(response.content))
     largura, altura = img_pil.size
     proporcao = altura / largura
-    # ⭐️ Ajuste: Largura dobrada para 400
+    # Ajuste: Largura dobrada para 400
     largura_desejada = 400 
     altura_calculada = largura_desejada * proporcao
     return Image(PIOBytesIO(response.content), width=largura_desejada, height=altura_calculada)
@@ -126,7 +126,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     return resultado, None
 
 # ===================== CONFIGURAÇÃO INICIAL E SESSION STATE =====================
-# ⭐️ AJUSTE: layout="wide" para usar 100% da largura da tela
+# AJUSTE: layout="wide" para usar 100% da largura da tela
 st.set_page_config(page_title="Traders Secundários - Calculadora", layout="wide")
 
 # --- Inicialização Padrão ---
@@ -245,7 +245,7 @@ if submitted:
 
 st.markdown("---")
 
-# ===================== TABELA DE PAPÉIS ADICIONADOS =====================
+# ===================== TABELA DE PAPÉIS ADICIONADOS (com Edição e Remoção) =====================
 
 if not st.session_state.papeis:
     st.info("Nenhum papel adicionado. Use o formulário acima para começar a simulação.")
@@ -254,27 +254,85 @@ if not st.session_state.papeis:
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
 df_papeis = pd.DataFrame(st.session_state.papeis)
-df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'])
+df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento']).dt.date # Converte para date object para edição
+# Formatação do Valor
+df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
+df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 
-df_papeis['Taxa/CDI'] = df_papeis.apply(
-    lambda row: f"{row['Taxa']:.2f}% a.a." if row['Tipo'] == 'Pré-fixado' else f"{row['Taxa']:.2f}% do CDI", axis=1
-)
-df_papeis['Valor'] = df_papeis['Valor'].apply(brl)
-df_papeis['Vencimento'] = df_papeis['Data Vencimento'].dt.strftime('%d/%m/%Y')
 
-colunas_exibir = ['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa/CDI', 'Vencimento']
+# Renomear colunas para exibição amigável
+df_papeis_edit = df_papeis.rename(columns={
+    'Emissor': 'Emissor',
+    'Ticker': 'Ticker',
+    'Valor': 'Valor Investido (R$)',
+    'Tipo': 'Tipo de Taxa',
+    'Taxa': 'Taxa (%)',
+    'Data Vencimento': 'Vencimento',
+})
 
-st.dataframe(
-    df_papeis[colunas_exibir],
+colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
+
+# ⭐️ Implementação da Edição e Remoção usando st.data_editor
+st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, marque a linha e clique no botão 🗑️ abaixo.")
+edited_df = st.data_editor(
+    df_papeis_edit[colunas_data_editor],
     hide_index=True,
+    num_rows="dynamic", # Permite que o usuário adicione ou remova linhas
     column_config={
-        "Valor": st.column_config.TextColumn("Valor Investido", width="medium"),
-        "Taxa/CDI": st.column_config.TextColumn("Rentabilidade", width="medium"),
-        "Vencimento": st.column_config.TextColumn("Data de Vencimento", width="small"),
-    }
+        "Valor Investido (R$)": st.column_config.NumberColumn(
+            "Valor Investido (R$)",
+            format="%.2f", # Permite que o usuário edite o valor como float
+            step=0.01,
+        ),
+        "Tipo de Taxa": st.column_config.SelectboxColumn(
+            "Tipo de Taxa",
+            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
+            required=True,
+        ),
+        "Taxa (%)": st.column_config.NumberColumn(
+            "Taxa (%)",
+            format="%.2f",
+            step=0.01,
+        ),
+        "Vencimento": st.column_config.DateColumn(
+            "Vencimento",
+            format="DD/MM/YYYY",
+            min_value=datetime.date.today(),
+        ),
+    },
+    key="data_editor_papeis"
 )
 
-if st.button("Limpar Lista de Papéis", type="primary"):
+# Processar as edições e remoções do data_editor
+# 1. Edições e Adições:
+if st.session_state.data_editor_papeis['edited_rows'] or st.session_state.data_editor_papeis['added_rows']:
+    # Converte o DataFrame editado de volta para a lista de dicionários original
+    df_papeis_new = edited_df.rename(columns={
+        'Valor Investido (R$)': 'Valor',
+        'Tipo de Taxa': 'Tipo',
+        'Taxa (%)': 'Taxa',
+        'Vencimento': 'Data Vencimento',
+    })
+    
+    # ⭐️ O Streamlit lida com as adições e edições na sessão do `st.data_editor`
+    st.session_state.papeis = df_papeis_new.to_dict('records')
+    st.success("Tabela atualizada. Recalculando a simulação...")
+    st.rerun()
+
+# 2. Remoção (Delete):
+# O Streamlit marca as linhas excluídas em st.session_state.data_editor_papeis['deleted_rows']
+if st.session_state.data_editor_papeis['deleted_rows']:
+    # Filtra o DataFrame original para remover as linhas deletadas
+    indices_para_remover = st.session_state.data_editor_papeis['deleted_rows']
+    
+    # Cria uma nova lista de papeis excluindo os índices marcados para remoção
+    papeis_novos = [p for i, p in enumerate(st.session_state.papeis) if i not in indices_para_remover]
+    st.session_state.papeis = papeis_novos
+    st.success(f"{len(indices_para_remover)} papel(is) removido(s). Recalculando a simulação...")
+    st.rerun()
+
+# Botão de Limpar Lista
+if st.button("Limpar Todos os Papéis", type="primary"):
     st.session_state.papeis = []
     st.rerun()
     
@@ -286,6 +344,12 @@ resultados_calculados = []
 papeis_para_grafico = []
 
 for papel in st.session_state.papeis:
+    # Garantir que Valor seja float, Taxa seja float e Data Vencimento seja date object
+    papel['Valor'] = float(papel['Valor']) if isinstance(papel['Valor'], (int, str)) else papel['Valor']
+    papel['Taxa'] = float(papel['Taxa']) if isinstance(papel['Taxa'], (int, str)) else papel['Taxa']
+    if isinstance(papel['Data Vencimento'], pd.Timestamp):
+        papel['Data Vencimento'] = papel['Data Vencimento'].date()
+    
     resultado, erro = calcular_papel(papel, data_aplicacao, st.session_state.cdi_benchmark_geral) 
     if resultado:
         papel.update(resultado) 
@@ -296,7 +360,8 @@ for papel in st.session_state.papeis:
 
 if not resultados_calculados:
     st.error("Não há papéis válidos para consolidar. Verifique as datas de vencimento.")
-    
+    st.stop() # Parar a execução se não houver dados válidos
+
 total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
 total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
 total_impostos = sum(r['Total Impostos'] for r in resultados_calculados)
@@ -408,7 +473,13 @@ def criar_pdf_secundarios():
         ["Emissor", "Ticker", "Valor Investido", "Tipo", "Taxa", "Vencimento", "Rendimento Líquido"]
     ]
     
+    # Prepara os dados do gráfico para o PDF
     for p in papeis_para_grafico: 
+        # Garante que o vencimento é um objeto date
+        vencimento_date = p['Data Vencimento']
+        if isinstance(vencimento_date, pd.Timestamp):
+            vencimento_date = vencimento_date.date()
+            
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         data_tabela_papeis.append([
             p['Emissor'],
@@ -416,7 +487,7 @@ def criar_pdf_secundarios():
             brl_pdf(p['Valor Investido']),
             p['Tipo'],
             taxa_str,
-            p['Data Vencimento'].strftime('%d/%m/%Y'),
+            vencimento_date.strftime('%d/%m/%Y'),
             brl_pdf(p['Rendimento Líquido'])
         ])
 
@@ -470,14 +541,14 @@ def criar_pdf_secundarios():
     story.append(Paragraph("FUNDAMENTOS DO CDB", styles['SectionTitle']))
     
     cdb_text = (
-        "O **CDB** (Certificado de Depósito Bancário) é um título de **renda fixa** emitido por bancos para captar recursos. É considerado "
-        "um **investimento de baixo risco** e conta com a **garantia do FGC** (Fundo Garantidor de Créditos), que cobre até **R$ 250.000** "
-        "por CPF e por instituição financeira, oferecendo **segurança** ao investidor. A rentabilidade pode ser **Pré-fixada** (taxa "
-        "definida no início) ou **Pós-fixada** (geralmente atrelada a um percentual do CDI). "
-        "Em relação às características de resgate, a **Liquidez** do CDB pode ser diária (ideal para reserva de emergência) ou "
-        "apenas no vencimento (oferecendo historicamente maior retorno). A **tributação** segue a tabela regressiva do Imposto de "
-        "Renda (**IR**), onde o imposto diminui quanto maior o prazo do investimento (chegando a 15% após 720 dias). O Imposto "
-        "sobre Operações Financeiras (**IOF**) é isento para resgates feitos após 30 dias."
+        "O <b>CDB</b> (Certificado de Depósito Bancário) é um título de <b>renda fixa</b> emitido por bancos para captar recursos. É considerado "
+        "um <b>investimento de baixo risco</b> e conta com a <b>garantia do FGC</b> (Fundo Garantidor de Créditos), que cobre até <b>R$ 250.000</b> "
+        "por CPF e por instituição financeira, oferecendo <b>segurança</b> ao investidor. A rentabilidade pode ser <b>Pré-fixada</b> (taxa "
+        "definida no início) ou <b>Pós-fixada</b> (geralmente atrelada a um percentual do CDI). "
+        "Em relação às características de resgate, a <b>Liquidez</b> do CDB pode ser diária (ideal para reserva de emergência) ou "
+        "apenas no vencimento (oferecendo historicamente maior retorno). A <b>tributação</b> segue a tabela regressiva do Imposto de "
+        "Renda (<b>IR</b>), onde o imposto diminui quanto maior o prazo do investimento (chegando a 15% após 720 dias). O Imposto "
+        "sobre Operações Financeiras (<b>IOF</b>) é isento para resgates feitos após 30 dias."
     )
     story.append(Paragraph(cdb_text, styles['CDBText']))
     
@@ -497,7 +568,7 @@ def criar_pdf_secundarios():
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
     
-    # ⭐️ AJUSTE: Novo texto do disclaimer
+    # AJUSTE: Novo texto do disclaimer
     disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes.") 
     story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
 
