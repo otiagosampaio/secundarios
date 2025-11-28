@@ -57,7 +57,7 @@ def carregar_logo():
     img_pil = PILImage.open(PIOBytesIO(response.content))
     largura, altura = img_pil.size
     proporcao = altura / largura
-    largura_desejada = 400 
+    largura_desejada = 30 * mm # Reduzido para padronizar o tamanho no PDF
     altura_calculada = largura_desejada * proporcao
     return Image(PIOBytesIO(response.content), width=largura_desejada, height=altura_calculada)
 
@@ -421,25 +421,28 @@ def criar_pdf_secundarios():
     story = []
     styles = getSampleStyleSheet()
     
-    styles.add(ParagraphStyle(name='TitlePDF', fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=7*mm, textColor=colors.HexColor('#000000')))
-    styles.add(ParagraphStyle(name='SectionTitle', fontSize=10, fontName='Helvetica-Bold', spaceAfter=5*mm, textColor=colors.HexColor('#333333'), alignment=0))
+    # Estilos ajustados para padronização
+    styles.add(ParagraphStyle(name='TitlePDF', fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=5*mm, textColor=colors.HexColor('#000000'))) # Reduzido spaceAfter
+    styles.add(ParagraphStyle(name='SectionTitle', fontSize=10, fontName='Helvetica-Bold', spaceBefore=5*mm, spaceAfter=3*mm, textColor=colors.HexColor('#333333'), alignment=0)) # Adicionado spaceBefore
     styles.add(ParagraphStyle(name='DataLabel', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#666666'), alignment=0))
     styles.add(ParagraphStyle(name='DataValue', fontSize=11, fontName='Helvetica-Bold', textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='Footer', fontSize=9, alignment=1, textColor=colors.HexColor('#666666')))
     styles.add(ParagraphStyle(name='Disclaimer', fontSize=7, fontName='Helvetica-Oblique', alignment=4, textColor=colors.HexColor('#666666'), spaceBefore=3*mm, spaceAfter=0*mm))
-    styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=10*mm)) 
-    styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=10, bottomPadding=10))
+    styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=5*mm)) # Reduzido spaceAfter
+    styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=8, bottomPadding=8)) # Reduzido padding
     styles.add(ParagraphStyle(name='TableHeaderPDF', fontSize=7, fontName='Helvetica-Bold', alignment=1, textColor=colors.HexColor('#333333')))
     styles.add(ParagraphStyle(name='TableCellPDF', fontSize=7, fontName='Helvetica', alignment=2))
 
     # 1. Cabeçalho
     logo = carregar_logo()
     logo.hAlign = 'CENTER'
+    # AJUSTE: Redução do Spacer entre o Logo e o Título
+    story.append(Spacer(1, 3*mm)) 
     story.append(logo)
-    story.append(Spacer(1, 10*mm))
+    story.append(Spacer(1, 3*mm))
     story.append(Paragraph("Simulação Consolidada - Papéis Secundários", styles['TitlePDF']))
     story.append(Paragraph("Projeção de Retorno com Múltiplos Emissores", getSampleStyleSheet()['Normal']))
-    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=5, spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Ajustado spaceBefore/After
 
     # 2. Dados Gerais
     story.append(Paragraph("DADOS DA SIMULAÇÃO", styles['SectionTitle']))
@@ -472,13 +475,16 @@ def criar_pdf_secundarios():
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
                 vencimento_date = datetime.date.today() # fallback
+        
+        # AJUSTE: Mostrar apenas "Pós-fixado"
+        tipo_taxa_display = "Pós-fixado" if p['Tipo'] == 'Pós-fixado (% do CDI)' else p['Tipo']
             
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         data_tabela_papeis.append([
             Paragraph(p['Emissor'], styles['TableCellPDF']),
             Paragraph(p['Ticker'], styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Valor Investido']), styles['TableCellPDF']),
-            Paragraph(p['Tipo'], styles['TableCellPDF']),
+            Paragraph(tipo_taxa_display, styles['TableCellPDF']), # Usando o tipo ajustado
             Paragraph(taxa_str, styles['TableCellPDF']),
             Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Rendimento Líquido']), styles['TableCellPDF']),
@@ -489,7 +495,7 @@ def criar_pdf_secundarios():
     t_papeis.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), # Alinha valores à direita
+        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), 
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
@@ -497,8 +503,7 @@ def criar_pdf_secundarios():
         ('FONTSIZE', (0, 1), (-1, -1), 7),
     ]))
     story.append(t_papeis)
-    story.append(Spacer(1, 10*mm))
-    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=5, spaceAfter=10))
+    story.append(Spacer(1, 5*mm))
 
     # 4. Resultado Consolidado (Tabela Azul)
     
@@ -518,20 +523,15 @@ def criar_pdf_secundarios():
         ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
         ('FONTSIZE', (0,1), (3,1), 9),
         ('FONTNAME', (0,1), (3,1), 'Helvetica-Bold'),
-        ('TOPPADDING', (0,1), (3,1), 4),
-        ('BOTTOMPADDING', (0,1), (3,1), 4),
-        ('FONTSIZE', (0,2), (3,2), 14),
-        ('TOPPADDING', (0,2), (3,2), 8),
-        ('BOTTOMPADDING', (0,2), (3,2), 8),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('GRID', (0,0), (-1,-1), 0, colors.transparent),
     ]))
     story.append(t_res_final)
-    story.append(Spacer(1, 10*mm))
+    story.append(Spacer(1, 5*mm))
     
     # 5. Fundamentos do CDB 
-    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=5, spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Ajustado spaceBefore/After
     story.append(Paragraph("FUNDAMENTOS DO CDB", styles['SectionTitle']))
     
     cdb_text = (
@@ -555,9 +555,10 @@ def criar_pdf_secundarios():
     img.hAlign = 'CENTER'
     story.append(img)
     
-    story.append(Spacer(1, 10*mm))
+    story.append(Spacer(1, 5*mm))
 
     # --- NOVO BLOCO: TABELA DE DETALHAMENTO POR PAPEL ---
+    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
     story.append(Paragraph("DETALHAMENTO POR PAPEL E TRIBUTAÇÃO", styles['SectionTitle']))
     
     data_tabela_detalhe = [
@@ -593,7 +594,7 @@ def criar_pdf_secundarios():
     t_detalhe.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), # Alinha valores à direita
+        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), 
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTSIZE', (0, 1), (-1, -1), 7),
@@ -601,13 +602,14 @@ def criar_pdf_secundarios():
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
     ]))
     story.append(t_detalhe)
-    story.append(Spacer(1, 10*mm))
+    story.append(Spacer(1, 5*mm))
     # --- FIM NOVO BLOCO ---
 
 
     # 7. Rodapé e Disclaimer 
+    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
     story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
-    story.append(Spacer(1, 5*mm))
+    story.append(Spacer(1, 3*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
     
     disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes. Os valores de liquidez representam o Capital Inicial Investido (sem considerar a rentabilidade) que estará disponível na data de vencimento.") 
