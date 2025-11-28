@@ -75,7 +75,8 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     prazo_dias = (data_vencimento - data_aplicacao).days
     
     if prazo_dias <= 0:
-        return None, "Data de resgate inválida"
+        # Se a data de vencimento for anterior ou igual à aplicação, retorna erro
+        return None, f"Data de resgate inválida para {papel['Ticker']}"
 
     # 2. Determinação da Taxa Diária e Base de Dias
     dias_ano = 360 # Geralmente usado para cálculo de Renda Fixa
@@ -99,7 +100,9 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
         # Tabela de IOF adaptada do seu código original
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
                    0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
-        aliquota_iof = iof_tab[prazo_dias-1]
+        # Garante que o índice não exceda a tabela (para prazo_dias de 1 a 30)
+        idx = min(prazo_dias, 30) - 1
+        aliquota_iof = iof_tab[idx]
         imposto_iof = rendimento_bruto * aliquota_iof
         rendimento_apos_iof = rendimento_bruto - imposto_iof
 
@@ -178,6 +181,11 @@ def adicionar_papel():
         st.error("O valor investido deve ser maior que zero.")
         return
     
+    # Verifica se a data de vencimento é posterior à data de aplicação
+    if st.session_state.vencimento_sec <= data_aplicacao:
+        st.error("A Data de Vencimento deve ser posterior à Data de Aplicação.")
+        return
+
     novo_papel = {
         'Emissor': st.session_state.emissor_sec,
         'Ticker': st.session_state.ticker_sec,
@@ -236,6 +244,9 @@ st.subheader("Papéis Incluídos para Simulação")
 # Criação de um DataFrame para exibir a lista de papéis
 df_papeis = pd.DataFrame(st.session_state.papeis)
 
+# ⭐️ CORREÇÃO DO ERRO: Converte explicitamente a coluna de data para datetime do Pandas
+df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'])
+
 # Adaptação para exibição
 df_papeis['Taxa/CDI'] = df_papeis.apply(
     lambda row: f"{row['Taxa']:.2f}% a.a." if row['Tipo'] == 'Pré-fixado' else f"{row['Taxa']:.2f}% do CDI", axis=1
@@ -266,14 +277,19 @@ st.markdown("---")
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 
 resultados_calculados = []
+papeis_para_grafico = []
+
 for papel in st.session_state.papeis:
     resultado, erro = calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark)
     if resultado:
         papel.update(resultado) # Adiciona os resultados calculados ao dicionário do papel
         resultados_calculados.append(resultado)
+        papeis_para_grafico.append(papel)
+    elif erro:
+        st.warning(f"Atenção: Papel {papel['Ticker']} ignorado na simulação. {erro}")
 
 if not resultados_calculados:
-    st.error("Erro nos dados de vencimento ou aplicação. Verifique se a data de vencimento é posterior à aplicação.")
+    st.error("Não há papéis válidos para consolidar. Verifique as datas de vencimento.")
     st.stop()
 
 # Consolidação dos Totais
@@ -297,12 +313,9 @@ st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DEST
 st.markdown("---")
 
 # ===================== GRÁFICO (Simplificado) =====================
-# Como temos múltiplos vencimentos e taxas, um gráfico de barras é mais adequado
-# do que a linha do tempo do projeto original.
-
 st.subheader("Visão por Papel (Rendimento Líquido)")
 
-df_resumo = pd.DataFrame(st.session_state.papeis)
+df_resumo = pd.DataFrame(papeis_para_grafico)
 df_resumo['Rendimento'] = df_resumo['Rendimento Líquido']
 df_resumo['Label'] = df_resumo['Ticker'] + ' (' + df_resumo['Data Vencimento'].dt.strftime('%Y') + ')'
 
@@ -322,11 +335,22 @@ def grafico_png():
     buf = BytesIO()
     fig.set_facecolor('white')
     ax.set_facecolor('white')
+    # Ajusta cores do texto para o PDF (preto)
+    ax.set_title(ax.get_title(), color='black')
+    ax.set_xlabel(ax.get_xlabel(), color='black')
+    ax.set_ylabel(ax.get_ylabel(), color='black')
+    ax.tick_params(axis='x', colors='black')
+    ax.tick_params(axis='y', colors='black')
+    
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
     buf.seek(0)
-    # Restaura cores para Streamlit (opcional)
-    fig.set_facecolor(st.config.get_option('theme.backgroundColor'))
-    ax.set_facecolor(st.config.get_option('theme.backgroundColor'))
+    # Restaura cores para Streamlit (opcional, pode ser simplificado se você usa o tema padrão)
+    ax.set_title(ax.get_title(), color=TEXTO_PRINCIPAL_ST)
+    ax.set_xlabel(ax.get_xlabel(), color=TEXTO_PRINCIPAL_ST)
+    ax.set_ylabel(ax.get_ylabel(), color=TEXTO_PRINCIPAL_ST)
+    ax.tick_params(axis='x', colors=TEXTO_PRINCIPAL_ST)
+    ax.tick_params(axis='y', colors=TEXTO_PRINCIPAL_ST)
+
     return buf
 
 def criar_pdf_secundarios():
@@ -342,6 +366,8 @@ def criar_pdf_secundarios():
     styles.add(ParagraphStyle(name='DataValue', fontSize=11, fontName='Helvetica-Bold', textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='Footer', fontSize=9, alignment=1, textColor=colors.HexColor('#666666')))
     styles.add(ParagraphStyle(name='Disclaimer', fontSize=7, fontName='Helvetica-Oblique', alignment=4, textColor=colors.HexColor('#666666'), spaceBefore=3*mm, spaceAfter=0*mm))
+    
+    # Estilo ajustado para a tabela final (sem espaçamentos 'spaceBefore/After')
     styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=10, bottomPadding=10))
     
     # 1. Cabeçalho
@@ -361,7 +387,8 @@ def criar_pdf_secundarios():
         [Paragraph("Assessor", styles['DataLabel']), Paragraph(nome_assessor, styles['DataValue']),
          Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{taxa_cdi_benchmark:.2f}% a.a.", styles['DataValue'])],
     ]
-    t_dados = Table(data_geral, colWidths=[80, 120, 80, 120])
+    total_width_pdf = A4[0] - 30*mm
+    t_dados = Table(data_geral, colWidths=[total_width_pdf*0.2, total_width_pdf*0.3, total_width_pdf*0.2, total_width_pdf*0.3])
     t_dados.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey), ('LEFTPADDING', (0,0), (-1,-1), 10)]))
     story.append(t_dados)
     story.append(Spacer(1, 5*mm))
@@ -373,7 +400,7 @@ def criar_pdf_secundarios():
         ["Emissor", "Ticker", "Valor Investido", "Tipo", "Taxa", "Vencimento", "Rendimento Líquido"]
     ]
     
-    for p in st.session_state.papeis:
+    for p in papeis_para_grafico: # Usa a lista de papéis válidos
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         data_tabela_papeis.append([
             p['Emissor'],
@@ -385,11 +412,14 @@ def criar_pdf_secundarios():
             brl_pdf(p['Rendimento Líquido'])
         ])
 
-    t_papeis = Table(data_tabela_papeis, colWidths=[65, 45, 60, 45, 60, 45, 70])
+    # Colunas ajustadas para caber
+    colWidths_papeis = [total_width_pdf*0.18, total_width_pdf*0.12, total_width_pdf*0.15, total_width_pdf*0.12, total_width_pdf*0.15, total_width_pdf*0.13, total_width_pdf*0.15]
+    t_papeis = Table(data_tabela_papeis, colWidths=colWidths_papeis)
     t_papeis.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
         ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 8),
         ('FONTSIZE', (0, 1), (-1, -1), 7),
@@ -408,8 +438,7 @@ def criar_pdf_secundarios():
         [Paragraph(f"Rentabilidade Líquida Efetiva: <font size='10' color='white'><b>{rentabilidade_efetiva:.2f}%</b></font>", styles['ResultTitleLarge']), "", "", ""],
     ]
     
-    total_width = A4[0] - 30*mm
-    colWidths_4 = [total_width/4] * 4
+    colWidths_4 = [total_width_pdf/4] * 4
     t_res_final = Table(resultado_completo, colWidths=colWidths_4)
     t_res_final.setStyle(TableStyle([
         ('SPAN', (0,0), (3,0)),
@@ -444,7 +473,7 @@ def criar_pdf_secundarios():
     story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
-    disclaimer_text = ("... (Insira o disclaimer legal completo da Traders DTVM aqui) ...") # Use seu disclaimer original
+    disclaimer_text = ("A Traders Distribuidora de Valores Mobiliários Ltda., com CNPJ sob o nº 62.280.490/0001-84 é uma instituição financeira autorizada a funcionar pelo Banco Central do Brasil... [Insira o disclaimer legal completo da Traders DTVM aqui]...") # Use seu disclaimer original
     story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
 
 
