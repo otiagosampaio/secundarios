@@ -16,6 +16,25 @@ import re
 import pandas as pd
 import numpy as np
 
+# ===================== INJEÇÃO DE CSS PARA LIMITAR A LARGURA DO CONTEÚDO (NOVO) =====================
+# Isso forçará o conteúdo principal a ter no máximo 60% da largura da tela, 
+# mas centralizado (usando margin: auto).
+st.markdown("""
+<style>
+.main .block-container {
+    max-width: 60% !important; 
+    padding-left: 2rem;
+    padding-right: 2rem;
+}
+
+/* Garante que o container interno onde o logo é renderizado seja centralizado */
+.stMarkdown > div > img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+</style>
+""", unsafe_allow_html=True)
 # ===================== CONFIGURAÇÃO DE CORES (TEMA CLARO PADRÃO) =====================
 URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" # Altere para o seu logo
 TEXTO_PRINCIPAL_ST = "#222222"
@@ -27,12 +46,14 @@ TAXA_CDI_MERCADO = 14.90
 # ===================== FUNÇÕES AUXILIARES =====================
 
 def carregar_logo():
+    # Esta função é usada apenas para o PDF, então o ajuste de tamanho por largura percentual 
+    # (width/height) só precisa ser feito no st.markdown, logo abaixo.
     url = URL_LOGO_WHITE
     response = requests.get(url)
     img_pil = PILImage.open(PIOBytesIO(response.content))
     largura, altura = img_pil.size
     proporcao = altura / largura
-    # Ajuste: Largura dobrada para 400
+    # Ajuste para PDF: Largura dobrada para 400
     largura_desejada = 400 
     altura_calculada = largura_desejada * proporcao
     return Image(PIOBytesIO(response.content), width=largura_desejada, height=altura_calculada)
@@ -154,8 +175,9 @@ if 'cdi_benchmark_geral' not in st.session_state:
     
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
 st.markdown(
+    # AJUSTE: Usando max-width: 60vw e height: auto para limitar o tamanho do logo a 60% da tela
     f"""<div style="text-align: center; margin: 10px 0;">
-        <img src="{URL_LOGO_WHITE}" width="400"> 
+        <img src="{URL_LOGO_WHITE}" style="max-width: 60vw; height: auto;"> 
     </div>""",
     unsafe_allow_html=True
 )
@@ -268,13 +290,6 @@ st.session_state.papeis = df_papeis_new.to_dict('records')
 if papeis_anteriores_len != len(st.session_state.papeis):
     st.success("Tabela de papéis atualizada. Recalculando a simulação...")
     st.rerun()
-
-# Rerun para edições que não mudaram o número de linhas (ex: mudança de taxa/valor)
-# Uma maneira simples é comparar a representação hash ou simplesmente usar o estado do data_editor
-# Streamlit costuma fazer o rerunning automático quando o data_editor altera o estado,
-# mas se a validação acima filtrou linhas, o rerunning é manual.
-# Para edições *válidas* que alteram valores, o Streamlit já cuida, a menos que o filtro
-# tenha alterado a lista de `st.session_state.papeis`.
 
 # Botão de Limpar Lista
 if st.button("Limpar Todos os Papéis", type="primary"):
