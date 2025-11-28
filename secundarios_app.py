@@ -45,8 +45,8 @@ URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" #
 TEXTO_PRINCIPAL_ST = "#222222"
 VERDE_DESTAQUE = '#2E8B57'
 AZUL_TABELA_PDF = colors.HexColor("#864df4")
-COR_PRIMARIA_FORM = '#6B48FF' 
-TAXA_CDI_MERCADO = 14.90 
+COR_PRIMARIA_FORM = '#6B48FF'
+TAXA_CDI_MERCADO = 14.90
 
 # ===================== FUNÇÕES AUXILIARES =====================
 
