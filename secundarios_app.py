@@ -15,6 +15,7 @@ from io import BytesIO as PIOBytesIO
 import re
 import pandas as pd
 import numpy as np
+import matplotlib.ticker as mticker # Importar para formatação do eixo X/Y
 
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS =====================
 st.markdown("""
@@ -98,6 +99,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     if tipo == "Pós-fixado (% do CDI)":
         taxa_anual_real = taxa_cdi_benchmark * (taxa_input / 100)
     
+    # Formulação da taxa diária:
     taxa_diaria = (1 + taxa_anual_real/100)**(1/dias_ano) - 1
 
     montante_bruto = valor_investido * (1 + taxa_diaria)**prazo_dias
@@ -139,7 +141,11 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 
 # ===================== SESSION STATE =====================
 if 'papeis' not in st.session_state:
-    st.session_state['papeis'] = []
+    # Adicionando um valor de exemplo inicial no Session State
+    st.session_state['papeis'] = [
+        {'Emissor': 'BANCO X', 'Ticker': 'CDB-X1', 'Valor': 20000.00, 'Tipo': 'Pré-fixado', 'Taxa': 16.50, 'Data Vencimento': datetime.date.today() + relativedelta(months=+12)},
+        {'Emissor': 'BANCO Y', 'Ticker': 'CDB-Y2', 'Valor': 30000.00, 'Tipo': 'Pós-fixado (% do CDI)', 'Taxa': 105.00, 'Data Vencimento': datetime.date.today() + relativedelta(months=+24)},
+    ]
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
     
@@ -177,13 +183,14 @@ st.subheader("Papéis Incluídos para Simulação", divider='gray')
 # Prepara o DataFrame para o editor
 if st.session_state.papeis:
     df_papeis = pd.DataFrame(st.session_state.papeis)
-    df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento']).dt.date 
+    # Garante que Data Vencimento é um objeto date, importante para o data_editor
+    df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date 
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
     # Cria um DataFrame vazio com as colunas esperadas para permitir a adição de novas linhas
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
-    df_papeis.loc[0] = ['Banco Alfa S.A.', 'CDB1234', 10000.00, 'Pré-fixado', 15.00, datetime.date.today() + relativedelta(months=+12)]
+    df_papeis.loc[0] = ['Emissor Exemplo', 'TICKER00', 1000.00, 'Pré-fixado', 15.00, datetime.date.today() + relativedelta(months=+12)]
 
 
 # Renomear colunas para exibição amigável
@@ -203,7 +210,7 @@ st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover*
 edited_df = st.data_editor(
     df_papeis_edit[colunas_data_editor],
     hide_index=True,
-    num_rows="dynamic", # Reverte para a inclusão na tabela
+    num_rows="dynamic", # Inclusão na tabela
     column_config={
         "Valor Investido (R$)": st.column_config.NumberColumn(
             "Valor Investido (R$)",
@@ -241,15 +248,14 @@ df_papeis_new = edited_df.rename(columns={
 
 # Remove linhas onde os valores essenciais não são válidos 
 df_papeis_new = df_papeis_new[
-    (df_papeis_new['Valor'] > 0) & 
-    (df_papeis_new['Taxa'] > 0) &
-    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp))))
+    (df_papeis_new['Valor'].astype(float) > 0) & 
+    (df_papeis_new['Taxa'].astype(float) > 0) &
+    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
 ]
 
 papeis_anteriores_len = len(st.session_state.papeis)
 st.session_state.papeis = df_papeis_new.to_dict('records')
 
-# Rerun se houve mudança significativa (edição, adição ou remoção)
 if papeis_anteriores_len != len(st.session_state.papeis):
     st.success("Tabela de papéis atualizada. Recalculando a simulação...")
     st.rerun()
@@ -271,9 +277,12 @@ resultados_calculados = []
 papeis_para_grafico = []
 
 for papel in st.session_state.papeis:
-    papel['Valor'] = float(papel['Valor'])
-    papel['Taxa'] = float(papel['Taxa'])
-    
+    try:
+        papel['Valor'] = float(papel['Valor'])
+        papel['Taxa'] = float(papel['Taxa'])
+    except (ValueError, TypeError):
+        continue # Ignora papéis com valores não numéricos
+        
     resultado, erro = calcular_papel(papel, data_aplicacao, st.session_state.cdi_benchmark_geral) 
     if resultado:
         papel.update(resultado) 
@@ -306,12 +315,13 @@ st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}
 st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True) 
 st.markdown("---")
 
-# ===================== GRÁFICO (Simplificado) =====================
+# ===================== GRÁFICO DO STREAMLIT (Mantém o Montante Bruto por Papel para a Tela) =====================
 st.subheader("Visão por Papel (Montante Bruto)", divider='gray') 
 
 df_resumo = pd.DataFrame(papeis_para_grafico)
 
-df_resumo['Data Vencimento'] = pd.to_datetime(df_resumo['Data Vencimento'])
+df_resumo['Data Vencimento'] = pd.to_datetime(df_resumo['Data Vencimento'], errors='coerce')
+df_resumo = df_resumo.dropna(subset=['Data Vencimento'])
 
 df_resumo['Valor_Grafico'] = df_resumo['Montante Bruto']
 df_resumo['Label_Grafico'] = df_resumo['Emissor'] + ' (' + df_resumo['Data Vencimento'].dt.strftime('%Y') + ')'
@@ -326,29 +336,52 @@ ax.grid(axis='y', alpha=0.3)
 plt.tight_layout() 
 st.pyplot(fig)
 
-# ===================== PDF GERAÇÃO =====================
+# ===================== PDF GERAÇÃO (COM NOVO GRÁFICO TIMELINE DE LIQUIDEZ) =====================
 def grafico_png():
+    # --- NOVO GRÁFICO: TIMELINE DE LIQUIDEZ (Valor Investido Agregado por Mês/Ano) ---
+    df_pdf = pd.DataFrame(papeis_para_grafico)
+    
+    # Garantir que a coluna de data é datetime e formatar para o agrupamento
+    df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
+    df_pdf = df_pdf.dropna(subset=['Data Vencimento'])
+    
+    # Criar a coluna de agrupamento (Mês/Ano)
+    df_pdf['Vencimento Formatado'] = df_pdf['Data Vencimento'].dt.strftime('%m/%Y')
+    
+    # Agrupar e somar o valor investido
+    df_timeline = df_pdf.groupby('Vencimento Formatado')['Valor Investido'].sum().reset_index()
+    
+    # Ordenar corretamente pelo ano e mês para exibição na timeline
+    df_timeline['Data Ordenacao'] = pd.to_datetime(df_timeline['Vencimento Formatado'], format='%m/%Y')
+    df_timeline = df_timeline.sort_values(by='Data Ordenacao').drop(columns=['Data Ordenacao'])
+    
+    # Gera o Gráfico de Barras Horizontal (Timeline de Liquidez)
+    fig_pdf, ax_pdf = plt.subplots(figsize=(10, 5)) 
+    
+    ax_pdf.barh(df_timeline['Vencimento Formatado'], df_timeline['Valor Investido'], color=COR_PRIMARIA_FORM, alpha=0.8)
+    
+    ax_pdf.set_title("Timeline de Liquidez: Valor a Vencer por Mês/Ano", fontsize=14, color='black') 
+    ax_pdf.set_xlabel("Valor Investido (R$)", fontsize=12, color='black') 
+    ax_pdf.set_ylabel("Vencimento", fontsize=12, color='black')
+    
+    # Formatação do eixo X como moeda
+    formatter = mticker.FuncFormatter(lambda x, pos: f'R$ {x:,.0f}'.replace(",", "X").replace(".", ",").replace("X", "."))
+    ax_pdf.xaxis.set_major_formatter(formatter)
+    
+    ax_pdf.tick_params(axis='x', rotation=0, labelsize=8, colors='black') 
+    ax_pdf.tick_params(axis='y', labelsize=9, colors='black') 
+    ax_pdf.grid(axis='x', alpha=0.3, linestyle='--')
+    
+    fig_pdf.set_facecolor('white')
+    ax_pdf.set_facecolor('white')
+    plt.tight_layout() 
+
+    # Salvar em buffer PNG
     buf = BytesIO()
-    
-    fig.set_facecolor('white')
-    ax.set_facecolor('white')
-    
-    ax.set_title(ax.get_title(), color='black')
-    ax.set_xlabel(ax.get_xlabel(), color='black')
-    ax.set_ylabel(ax.get_ylabel(), color='black')
-    ax.tick_params(axis='x', colors='black')
-    ax.tick_params(axis='y', colors='black')
-    
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
     buf.seek(0)
-
-    # Restaura cores para Streamlit 
-    ax.set_title(ax.get_title(), color=TEXTO_PRINCIPAL_ST)
-    ax.set_xlabel(ax.get_xlabel(), color=TEXTO_PRINCIPAL_ST)
-    ax.set_ylabel(ax.get_ylabel(), color=TEXTO_PRINCIPAL_ST)
-    ax.tick_params(axis='x', colors=TEXTO_PRINCIPAL_ST)
-    ax.tick_params(axis='y', colors=TEXTO_PRINCIPAL_ST)
-
+    plt.close(fig_pdf) # Fecha a figura para não poluir o Streamlit
+    
     return buf
 
 def criar_pdf_secundarios():
@@ -364,7 +397,6 @@ def criar_pdf_secundarios():
     styles.add(ParagraphStyle(name='Footer', fontSize=9, alignment=1, textColor=colors.HexColor('#666666')))
     styles.add(ParagraphStyle(name='Disclaimer', fontSize=7, fontName='Helvetica-Oblique', alignment=4, textColor=colors.HexColor('#666666'), spaceBefore=3*mm, spaceAfter=0*mm))
     styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=10*mm)) 
-    
     styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=10, bottomPadding=10))
     
     # 1. Cabeçalho
@@ -401,6 +433,12 @@ def criar_pdf_secundarios():
         vencimento_date = p['Data Vencimento']
         if isinstance(vencimento_date, pd.Timestamp):
             vencimento_date = vencimento_date.date()
+        elif isinstance(vencimento_date, str):
+             # Tratar caso de string que passou do data_editor
+            try:
+                vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
+            except:
+                vencimento_date = datetime.date.today() # fallback
             
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         data_tabela_papeis.append([
@@ -476,10 +514,10 @@ def criar_pdf_secundarios():
     
     story.append(PageBreak())
     
-    # 6. Gráfico 
-    story.append(Paragraph("PROJEÇÃO DE MONTANTE BRUTO POR PAPEL", styles['SectionTitle'])) 
+    # 6. Gráfico - Timeline de Liquidez 
+    story.append(Paragraph("TIMELINE DE LIQUIDEZ: VALOR INVESTIDO POR VENCIMENTO", styles['SectionTitle'])) 
     
-    img = Image(grafico_png(), width=160*mm, height=80*mm) 
+    img = Image(grafico_png(), width=160*mm, height=100*mm) # Aumentei um pouco a altura para acomodar o gráfico horizontal
     img.hAlign = 'CENTER'
     story.append(img)
     
@@ -490,7 +528,7 @@ def criar_pdf_secundarios():
     story.append(Spacer(1, 5*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
     
-    disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes.") 
+    disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes. Os valores de liquidez representam o Capital Inicial Investido (sem considerar a rentabilidade) que estará disponível na data de vencimento.") 
     story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
 
 
