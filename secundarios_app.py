@@ -63,6 +63,10 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     tipo = papel['Tipo']
     taxa_input = papel['Taxa']
 
+    # Garante que data_vencimento é um objeto date (para compatibilidade com o cálculo, embora já venha do to_datetime)
+    if isinstance(data_vencimento, pd.Timestamp):
+        data_vencimento = data_vencimento.date()
+
     prazo_dias = (data_vencimento - data_aplicacao).days
     
     if prazo_dias <= 0:
@@ -114,27 +118,31 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     return resultado, None
 
 # ===================== CONFIGURAÇÃO INICIAL E SESSION STATE =====================
-# ⭐️ AJUSTE DE LAYOUT: Define o layout como "centered" para que não ocupe 100% da tela
+# ⭐️ AJUSTE DE LAYOUT: layout="centered" está correto para limitar a largura
 st.set_page_config(page_title="Traders Secundários - Calculadora", layout="centered")
 
 if 'papeis' not in st.session_state:
     st.session_state['papeis'] = []
 if 'valor_input' not in st.session_state:
-    st.session_state['valor_input'] = "500.000,00" # Valor base para o formulário de inclusão
+    st.session_state['valor_input'] = "500.000,00" 
+if 'cdi_benchmark_geral' not in st.session_state:
+    st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
+
 
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
 st.markdown(
     f"""<div style="text-align: center; margin: 10px 0;">
-        <img src="{URL_LOGO_WHITE}" width="200"> </div>""",
+        <img src="{URL_LOGO_WHITE}" width="200"> 
+    </div>""",
     unsafe_allow_html=True
 )
-st.markdown(f"<h3 style='text-align: center; color: {TEXTO_PRINCIPAL_ST};'>Calculadora de Simulação de Papéis Secundários</h3>", unsafe_allow_html=True) # ⭐️ h2 para h3
-st.markdown(f"<p style='text-align: center; font-size: 15px; margin-bottom: 20px;'>Adicione os papéis e simule o resultado consolidado para o cliente.</p>", unsafe_allow_html=True) # ⭐️ font-size e margin
+st.markdown(f"<h3 style='text-align: center; color: {TEXTO_PRINCIPAL_ST};'>Calculadora de Simulação de Papéis Secundários</h3>", unsafe_allow_html=True) 
+st.markdown(f"<p style='text-align: center; font-size: 15px; margin-bottom: 20px;'>Adicione os papéis e simule o resultado consolidado para o cliente.</p>", unsafe_allow_html=True) 
 st.markdown("---")
 
 # ===================== DADOS GERAIS DA SIMULAÇÃO =====================
-st.subheader("Dados Gerais da Simulação", divider='gray') # ⭐️ Adicionado divider para clareza
-c1, c2 = st.columns(2) # ⭐️ Reduzido de 3 para 2 colunas para melhor layout
+st.subheader("Dados Gerais da Simulação", divider='gray') 
+c1, c2 = st.columns(2) 
 
 with c1:
     nome_cliente = st.text_input("Nome do Cliente", "João Silva")
@@ -144,7 +152,7 @@ with c2:
     nome_assessor = st.text_input("Nome do Assessor", "Seu Nome")
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
-st.number_input("Taxa CDI Anual (Benchmark) (%)", value=TAXA_CDI_MERCADO, step=0.05, key='cdi_benchmark_geral') # Fora das colunas
+st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral') 
     
 st.markdown("---")
 
@@ -174,10 +182,10 @@ def adicionar_papel():
     
     st.session_state.papeis.append(novo_papel)
     st.session_state.valor_bruto_input_sec = "0,00"
-    st.session_state.taxa_sec = 0.0 # Reseta para 0.0 ou para um valor padrão razoável
+    st.session_state.taxa_sec = 0.0 
 
 with st.form("form_papel", clear_on_submit=False):
-    col_e1, col_e2 = st.columns(2) # ⭐️ Reduzido para 2 colunas
+    col_e1, col_e2 = st.columns(2) 
 
     with col_e1:
         st.text_input("Emissor", value="Banco Alfa S.A.", key="emissor_sec")
@@ -247,7 +255,6 @@ resultados_calculados = []
 papeis_para_grafico = []
 
 for papel in st.session_state.papeis:
-    # Use st.session_state.cdi_benchmark_geral para o cálculo, não a variável local taxa_cdi_benchmark
     resultado, erro = calcular_papel(papel, data_aplicacao, st.session_state.cdi_benchmark_geral) 
     if resultado:
         papel.update(resultado) 
@@ -270,34 +277,37 @@ rentabilidade_efetiva = (rendimento_liquido_total / total_investido) * 100 if to
 
 st.subheader("Resultado Consolidado da Simulação", divider='gray')
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Investido", brl(total_investido))
-c2.metric("Montante Bruto", brl(total_bruto))
-c3.metric("Impostos (IR + IOF)", brl(total_impostos))
-c4.metric("Montante Líquido", brl(total_liquido), delta=f"{brl(rendimento_liquido_total)} (Rendimento)")
 
-st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True) # ⭐️ font-size
+# ⭐️ AJUSTE DE FORMATO NAS METRICAS: Usando tags HTML para forçar a quebra de linha no título da coluna se necessário
+c1.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Total Investido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_investido)}</h4>", unsafe_allow_html=True)
+c2.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Bruto</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_bruto)}</h4>", unsafe_allow_html=True)
+c3.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Impostos (IR + IOF)</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_impostos)}</h4>", unsafe_allow_html=True)
+c4.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Líquido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_liquido)}</h4>", unsafe_allow_html=True)
+
+st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{brl(rendimento_liquido_total)}</span>", unsafe_allow_html=True)
+st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True) 
 st.markdown("---")
 
 # ===================== GRÁFICO (Simplificado) =====================
-st.subheader("Visão por Papel (Montante Bruto)", divider='gray') # ⭐️ Título alterado
+st.subheader("Visão por Papel (Montante Bruto)", divider='gray') 
 
 df_resumo = pd.DataFrame(papeis_para_grafico)
 
 df_resumo['Data Vencimento'] = pd.to_datetime(df_resumo['Data Vencimento'])
 
-# ⭐️ AJUSTE GRÁFICO: Usar Emissor e Montante Bruto
 df_resumo['Valor_Grafico'] = df_resumo['Montante Bruto']
 df_resumo['Label_Grafico'] = df_resumo['Emissor'] + ' (' + df_resumo['Data Vencimento'].dt.strftime('%Y') + ')'
 
-# ⭐️ AJUSTE GRÁFICO: Tamanho da figura
-fig, ax = plt.subplots(figsize=(8, 4)) # Menor largura e altura
+# ⭐️ AJUSTE DE GRÁFICO: Altura aumentada (de 4 para 5)
+fig, ax = plt.subplots(figsize=(8, 5)) 
 ax.bar(df_resumo['Label_Grafico'], df_resumo['Valor_Grafico'], color=COR_PRIMARIA_FORM, alpha=0.7)
-ax.set_title("Montante Bruto por Papel (R$)", fontsize=12) # ⭐️ Título do gráfico
-ax.set_ylabel("Montante Bruto (R$)", fontsize=10) # ⭐️ Label do eixo Y
-ax.tick_params(axis='x', rotation=45, labelsize=8) # ⭐️ Tamanho da fonte dos labels do eixo X
-ax.tick_params(axis='y', labelsize=8) # ⭐️ Tamanho da fonte dos labels do eixo Y
+ax.set_title("Montante Bruto por Papel (R$)", fontsize=12) 
+ax.set_ylabel("Montante Bruto (R$)", fontsize=10) 
+# ⭐️ AJUSTE DE GRÁFICO: Rotação para 30 graus e labelsize menor para evitar corte
+ax.tick_params(axis='x', rotation=30, labelsize=7) 
+ax.tick_params(axis='y', labelsize=8) 
 ax.grid(axis='y', alpha=0.3)
-plt.tight_layout() # Ajusta automaticamente para evitar sobreposição
+plt.tight_layout() 
 st.pyplot(fig)
 
 # ===================== PDF GERAÇÃO (Adaptado para Múltiplos Papéis) =====================
@@ -317,7 +327,6 @@ def grafico_png():
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
     buf.seek(0)
 
-    # Restaura cores para Streamlit (se necessário)
     ax.set_title(ax.get_title(), color=TEXTO_PRINCIPAL_ST)
     ax.set_xlabel(ax.get_xlabel(), color=TEXTO_PRINCIPAL_ST)
     ax.set_ylabel(ax.get_ylabel(), color=TEXTO_PRINCIPAL_ST)
@@ -356,7 +365,7 @@ def criar_pdf_secundarios():
         [Paragraph("Cliente", styles['DataLabel']), Paragraph(nome_cliente, styles['DataValue']),
          Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(data_aplicacao.strftime('%d/%m/%Y'), styles['DataValue'])],
         [Paragraph("Assessor", styles['DataLabel']), Paragraph(nome_assessor, styles['DataValue']),
-         Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{st.session_state.cdi_benchmark_geral:.2f}% a.a.", styles['DataValue'])], # ⭐️ Usando st.session_state.cdi_benchmark_geral
+         Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{st.session_state.cdi_benchmark_geral:.2f}% a.a.", styles['DataValue'])], 
     ]
     total_width_pdf = A4[0] - 30*mm
     t_dados = Table(data_geral, colWidths=[total_width_pdf*0.2, total_width_pdf*0.3, total_width_pdf*0.2, total_width_pdf*0.3])
@@ -371,7 +380,7 @@ def criar_pdf_secundarios():
         ["Emissor", "Ticker", "Valor Investido", "Tipo", "Taxa", "Vencimento", "Rendimento Líquido"]
     ]
     
-    for p in papeis_para_grafico: # Usa a lista de papéis válidos
+    for p in papeis_para_grafico: 
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         data_tabela_papeis.append([
             p['Emissor'],
@@ -430,9 +439,9 @@ def criar_pdf_secundarios():
     
     # 5. Gráfico (Página 2)
     story.append(PageBreak())
-    story.append(Paragraph("PROJEÇÃO DE MONTANTE BRUTO POR PAPEL", styles['SectionTitle'])) # ⭐️ Título alterado no PDF
+    story.append(Paragraph("PROJEÇÃO DE MONTANTE BRUTO POR PAPEL", styles['SectionTitle'])) 
     
-    img = Image(grafico_png(), width=160*mm, height=80*mm) # ⭐️ Tamanho do gráfico no PDF
+    img = Image(grafico_png(), width=160*mm, height=80*mm) 
     img.hAlign = 'CENTER'
     story.append(img)
     
