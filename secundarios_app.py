@@ -220,7 +220,7 @@ edited_df = st.data_editor(
         ),
         "Tipo de Taxa": st.column_config.SelectboxColumn(
             "Tipo de Taxa",
-            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
+            options=["Pré-fixado", "Pós-fixado)"],
             required=True,
         ),
         "Taxa (%)": st.column_config.NumberColumn(
