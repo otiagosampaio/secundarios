@@ -32,7 +32,8 @@ def carregar_logo():
     img_pil = PILImage.open(PIOBytesIO(response.content))
     largura, altura = img_pil.size
     proporcao = altura / largura
-    largura_desejada = 200
+    # ⭐️ Ajuste: Largura dobrada para 400
+    largura_desejada = 400 
     altura_calculada = largura_desejada * proporcao
     return Image(PIOBytesIO(response.content), width=largura_desejada, height=altura_calculada)
 
@@ -125,7 +126,8 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     return resultado, None
 
 # ===================== CONFIGURAÇÃO INICIAL E SESSION STATE =====================
-st.set_page_config(page_title="Traders Secundários - Calculadora", layout="centered")
+# ⭐️ AJUSTE: layout="wide" para usar 100% da largura da tela
+st.set_page_config(page_title="Traders Secundários - Calculadora", layout="wide")
 
 # --- Inicialização Padrão ---
 if 'papeis' not in st.session_state:
@@ -151,7 +153,7 @@ if 'valor_bruto_input_sec' not in st.session_state:
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
 st.markdown(
     f"""<div style="text-align: center; margin: 10px 0;">
-        <img src="{URL_LOGO_WHITE}" width="200"> 
+        <img src="{URL_LOGO_WHITE}" width="400"> 
     </div>""",
     unsafe_allow_html=True
 )
@@ -206,7 +208,7 @@ def adicionar_papel(data_aplicacao):
     return True # Indica que a adição foi bem-sucedida
 
 # ===================== FORMULÁRIO (COM A CORREÇÃO CRÍTICA) =====================
-# ⭐️ AJUSTE CRÍTICO: clear_on_submit=True
+# clear_on_submit=True garante que os campos do formulário sejam limpos
 with st.form("form_papel", clear_on_submit=True): 
     col_e1, col_e2 = st.columns(2) 
 
@@ -238,7 +240,7 @@ with st.form("form_papel", clear_on_submit=True):
 # ⭐️ FLUXO PRINCIPAL: Se o formulário foi submetido e a adição foi bem-sucedida
 if submitted:
     if adicionar_papel(data_aplicacao):
-        # 🟢 NENHUMA LIMPEZA MANUAL É NECESSÁRIA AQUI (graças a clear_on_submit=True)
+        # Nenhuma limpeza manual do session_state é necessária aqui
         st.rerun() 
 
 st.markdown("---")
