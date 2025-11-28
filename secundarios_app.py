@@ -244,7 +244,7 @@ st.subheader("Papéis Incluídos para Simulação")
 # Criação de um DataFrame para exibir a lista de papéis
 df_papeis = pd.DataFrame(st.session_state.papeis)
 
-# ⭐️ CORREÇÃO DO ERRO: Converte explicitamente a coluna de data para datetime do Pandas
+# ⭐️ CORREÇÃO 1: Converte explicitamente a coluna de data para datetime do Pandas (necessário para o .dt.strftime)
 df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'])
 
 # Adaptação para exibição
@@ -286,7 +286,7 @@ for papel in st.session_state.papeis:
         resultados_calculados.append(resultado)
         papeis_para_grafico.append(papel)
     elif erro:
-        st.warning(f"Atenção: Papel {papel['Ticker']} ignorado na simulação. {erro}")
+        st.warning(f"Atenção: Papel **{papel['Ticker']}** ignorado na simulação. **{erro}**")
 
 if not resultados_calculados:
     st.error("Não há papéis válidos para consolidar. Verifique as datas de vencimento.")
@@ -316,6 +316,10 @@ st.markdown("---")
 st.subheader("Visão por Papel (Rendimento Líquido)")
 
 df_resumo = pd.DataFrame(papeis_para_grafico)
+
+# ⭐️ CORREÇÃO 2: Converte explicitamente a coluna de data para datetime do Pandas
+df_resumo['Data Vencimento'] = pd.to_datetime(df_resumo['Data Vencimento'])
+
 df_resumo['Rendimento'] = df_resumo['Rendimento Líquido']
 df_resumo['Label'] = df_resumo['Ticker'] + ' (' + df_resumo['Data Vencimento'].dt.strftime('%Y') + ')'
 
@@ -333,8 +337,11 @@ st.pyplot(fig)
 def grafico_png():
     # Salva o gráfico de barras para o PDF
     buf = BytesIO()
+    
+    # Configurações para garantir que o gráfico saia em branco no PDF (background)
     fig.set_facecolor('white')
     ax.set_facecolor('white')
+    
     # Ajusta cores do texto para o PDF (preto)
     ax.set_title(ax.get_title(), color='black')
     ax.set_xlabel(ax.get_xlabel(), color='black')
@@ -344,7 +351,8 @@ def grafico_png():
     
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
     buf.seek(0)
-    # Restaura cores para Streamlit (opcional, pode ser simplificado se você usa o tema padrão)
+
+    # Restaura cores para Streamlit (tema padrão)
     ax.set_title(ax.get_title(), color=TEXTO_PRINCIPAL_ST)
     ax.set_xlabel(ax.get_xlabel(), color=TEXTO_PRINCIPAL_ST)
     ax.set_ylabel(ax.get_ylabel(), color=TEXTO_PRINCIPAL_ST)
