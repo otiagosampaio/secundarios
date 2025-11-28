@@ -15,7 +15,7 @@ from io import BytesIO as PIOBytesIO
 import re
 import pandas as pd
 import numpy as np
-import matplotlib.ticker as mticker 
+import matplotlib.ticker as mticker
 
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS =====================
 st.markdown("""
