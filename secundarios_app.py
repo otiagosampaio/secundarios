@@ -207,7 +207,7 @@ def adicionar_papel(data_aplicacao):
     
     return True # Indica que a adição foi bem-sucedida
 
-# ===================== FORMULÁRIO (COM A CORREÇÃO CRÍTICA) =====================
+# ===================== FORMULÁRIO (COM AJUSTE DE LABEL) =====================
 # clear_on_submit=True garante que os campos do formulário sejam limpos
 with st.form("form_papel", clear_on_submit=True): 
     col_e1, col_e2 = st.columns(2) 
@@ -218,12 +218,15 @@ with st.form("form_papel", clear_on_submit=True):
         st.date_input("Data de Vencimento", key="vencimento_sec", format="DD/MM/YYYY")
             
     with col_e2:
-        tipo_cdb_sec = st.selectbox("Tipo de Taxa", ["Pré-fixado", "Pós-fixado"], key="tipo_cdb_sec")
+        tipo_cdb_sec = st.selectbox("Tipo de Taxa", ["Pré-fixado", "Pós-fixado (% do CDI)"], key="tipo_cdb_sec")
         
+        # ⭐️ AJUSTE DE LABEL CONDICIONAL
         if st.session_state.tipo_cdb_sec == "Pós-fixado (% do CDI)":
-            st.number_input("Percentual do CDI (%)", step=1.0, key="taxa_sec", min_value=0.0)
+            label_taxa = "Taxa Pós-fixada (% do CDI)"
+            st.number_input(label_taxa, step=1.0, key="taxa_sec", min_value=0.0)
         else:
-            st.number_input("Taxa Pré-fixada anual (%)", step=0.05, key="taxa_sec", min_value=0.0)
+            label_taxa = "Taxa Pré-fixada anual (%)"
+            st.number_input(label_taxa, step=0.05, key="taxa_sec", min_value=0.0)
         
         st.text_input(
             label="Valor investido neste papel", 
@@ -272,7 +275,7 @@ df_papeis_edit = df_papeis.rename(columns={
 
 colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
 
-# ⭐️ Implementação da Edição e Remoção usando st.data_editor
+# Implementação da Edição e Remoção usando st.data_editor
 st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, marque a linha e clique no botão 🗑️ abaixo.")
 edited_df = st.data_editor(
     df_papeis_edit[colunas_data_editor],
@@ -314,7 +317,7 @@ if st.session_state.data_editor_papeis['edited_rows'] or st.session_state.data_e
         'Vencimento': 'Data Vencimento',
     })
     
-    # ⭐️ O Streamlit lida com as adições e edições na sessão do `st.data_editor`
+    # O Streamlit lida com as adições e edições na sessão do `st.data_editor`
     st.session_state.papeis = df_papeis_new.to_dict('records')
     st.success("Tabela atualizada. Recalculando a simulação...")
     st.rerun()
