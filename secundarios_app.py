@@ -180,7 +180,7 @@ st.markdown("---")
 st.subheader("Inclusão de Novo Papel", divider='gray')
 
 def adicionar_papel(data_aplicacao):
-    """Faz a validação e adiciona o papel, mas NÃO limpa o session_state (a limpeza ocorre fora, antes do rerun)."""
+    """Faz a validação e adiciona o papel. A limpeza do estado é feita automaticamente pelo st.form."""
     
     valor_investido_float = desformatar_moeda(formatar_moeda_input(st.session_state.valor_bruto_input_sec))
 
@@ -205,8 +205,9 @@ def adicionar_papel(data_aplicacao):
     
     return True # Indica que a adição foi bem-sucedida
 
-# ===================== FORMULÁRIO =====================
-with st.form("form_papel", clear_on_submit=False):
+# ===================== FORMULÁRIO (COM A CORREÇÃO CRÍTICA) =====================
+# ⭐️ AJUSTE CRÍTICO: clear_on_submit=True
+with st.form("form_papel", clear_on_submit=True): 
     col_e1, col_e2 = st.columns(2) 
 
     with col_e1:
@@ -234,19 +235,11 @@ with st.form("form_papel", clear_on_submit=False):
     # Captura a submissão
     submitted = st.form_submit_button("ADICIONAR PAPEL À SIMULAÇÃO", type="secondary", use_container_width=True)
 
-# ⭐️ AJUSTE CRÍTICO: Lógica de submissão, limpeza e Rerun no fluxo principal
+# ⭐️ FLUXO PRINCIPAL: Se o formulário foi submetido e a adição foi bem-sucedida
 if submitted:
-    if adicionar_papel(data_aplicacao): # Tenta adicionar o papel
-        
-        # 🟢 LIMPEZA DOS CAMPOS (AQUI É SEGURO, antes do rerun)
-        st.session_state.emissor_sec = "" 
-        st.session_state.ticker_sec = "" 
-        st.session_state.tipo_cdb_sec = "Pré-fixado" 
-        st.session_state.taxa_sec = 0.0 
-        st.session_state.vencimento_sec = datetime.date.today() + relativedelta(months=+12) 
-        st.session_state.valor_bruto_input_sec = ""
-        
-        st.rerun() # O RERUN é executado no fluxo principal
+    if adicionar_papel(data_aplicacao):
+        # 🟢 NENHUMA LIMPEZA MANUAL É NECESSÁRIA AQUI (graças a clear_on_submit=True)
+        st.rerun() 
 
 st.markdown("---")
 
