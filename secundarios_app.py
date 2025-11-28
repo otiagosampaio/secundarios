@@ -144,7 +144,7 @@ if 'papeis' not in st.session_state:
     # Adicionando um valor de exemplo inicial no Session State
     st.session_state['papeis'] = [
         {'Emissor': 'BANCO X', 'Ticker': 'CDB-X1', 'Valor': 20000.00, 'Tipo': 'Pré-fixado', 'Taxa': 16.50, 'Data Vencimento': datetime.date.today() + relativedelta(months=+12)},
-        {'Emissor': 'BANCO Y', 'Ticker': 'CDB-Y2', 'Valor': 30000.00, 'Tipo': 'Pós-fixado', 'Taxa': 105.00, 'Data Vencimento': datetime.date.today() + relativedelta(months=+24)},
+        {'Emissor': 'BANCO Y', 'Ticker': 'CDB-Y2', 'Valor': 30000.00, 'Tipo': 'Pós-fixado (% do CDI)', 'Taxa': 105.00, 'Data Vencimento': datetime.date.today() + relativedelta(months=+24)},
     ]
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
@@ -220,7 +220,7 @@ edited_df = st.data_editor(
         ),
         "Tipo de Taxa": st.column_config.SelectboxColumn(
             "Tipo de Taxa",
-            options=["Pré-fixado", "Pós-fixado"],
+            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
             required=True,
         ),
         "Taxa (%)": st.column_config.NumberColumn(
@@ -336,9 +336,9 @@ ax.grid(axis='y', alpha=0.3)
 plt.tight_layout() 
 st.pyplot(fig)
 
-# ===================== PDF GERAÇÃO (COM NOVO GRÁFICO TIMELINE DE LIQUIDEZ) =====================
+# ===================== PDF GERAÇÃO (COM GRÁFICO E NOVA TABELA DE DETALHE) =====================
 def grafico_png():
-    # --- NOVO GRÁFICO: TIMELINE DE LIQUIDEZ (Valor Investido Agregado por Mês/Ano) ---
+    # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
     df_pdf = pd.DataFrame(papeis_para_grafico)
     
     # Garantir que a coluna de data é datetime e formatar para o agrupamento
@@ -378,7 +378,6 @@ def grafico_png():
     for bar in bar_container:
         width = bar.get_width() # O valor do eixo X (Valor Investido)
         # Formatar o valor para R$
-        # Uso de 'brl' localmente ou uma formatação específica para o gráfico
         valor_formatado = f'R$ {width:,.0f}'.replace(",", "X").replace(".", ",").replace("X", ".")
         
         # Adicionar o rótulo de dados (Data Label)
@@ -430,7 +429,9 @@ def criar_pdf_secundarios():
     styles.add(ParagraphStyle(name='Disclaimer', fontSize=7, fontName='Helvetica-Oblique', alignment=4, textColor=colors.HexColor('#666666'), spaceBefore=3*mm, spaceAfter=0*mm))
     styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=10*mm)) 
     styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=10, bottomPadding=10))
-    
+    styles.add(ParagraphStyle(name='TableHeaderPDF', fontSize=7, fontName='Helvetica-Bold', alignment=1, textColor=colors.HexColor('#333333')))
+    styles.add(ParagraphStyle(name='TableCellPDF', fontSize=7, fontName='Helvetica', alignment=2))
+
     # 1. Cabeçalho
     logo = carregar_logo()
     logo.hAlign = 'CENTER'
@@ -454,11 +455,11 @@ def criar_pdf_secundarios():
     story.append(t_dados)
     story.append(Spacer(1, 5*mm))
 
-    # 3. Tabela de Papéis
-    story.append(Paragraph("DETALHES DOS PAPÉIS INCLUÍDOS", styles['SectionTitle']))
+    # 3. Tabela de Papéis (Resumo)
+    story.append(Paragraph("RESUMO DOS PAPÉIS INCLUÍDOS", styles['SectionTitle']))
     
     data_tabela_papeis = [
-        ["Emissor", "Ticker", "Valor Investido", "Tipo", "Taxa", "Vencimento", "Rendimento Líquido"]
+        [Paragraph("Emissor", styles['TableHeaderPDF']), Paragraph("Ticker", styles['TableHeaderPDF']), Paragraph("Valor Investido", styles['TableHeaderPDF']), Paragraph("Tipo", styles['TableHeaderPDF']), Paragraph("Taxa", styles['TableHeaderPDF']), Paragraph("Vencimento", styles['TableHeaderPDF']), Paragraph("Rendimento Líquido", styles['TableHeaderPDF'])]
     ]
     
     for p in papeis_para_grafico: 
@@ -474,13 +475,13 @@ def criar_pdf_secundarios():
             
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         data_tabela_papeis.append([
-            p['Emissor'],
-            p['Ticker'],
-            brl_pdf(p['Valor Investido']),
-            p['Tipo'],
-            taxa_str,
-            vencimento_date.strftime('%d/%m/%Y'),
-            brl_pdf(p['Rendimento Líquido'])
+            Paragraph(p['Emissor'], styles['TableCellPDF']),
+            Paragraph(p['Ticker'], styles['TableCellPDF']),
+            Paragraph(brl_pdf(p['Valor Investido']), styles['TableCellPDF']),
+            Paragraph(p['Tipo'], styles['TableCellPDF']),
+            Paragraph(taxa_str, styles['TableCellPDF']),
+            Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
+            Paragraph(brl_pdf(p['Rendimento Líquido']), styles['TableCellPDF']),
         ])
 
     colWidths_papeis = [total_width_pdf*0.18, total_width_pdf*0.12, total_width_pdf*0.15, total_width_pdf*0.12, total_width_pdf*0.15, total_width_pdf*0.13, total_width_pdf*0.15]
@@ -488,10 +489,11 @@ def criar_pdf_secundarios():
     t_papeis.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
+        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), # Alinha valores à direita
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('FONTSIZE', (0, 1), (-1, -1), 7),
     ]))
     story.append(t_papeis)
@@ -549,11 +551,59 @@ def criar_pdf_secundarios():
     # 6. Gráfico - Timeline de Liquidez 
     story.append(Paragraph("TIMELINE DE LIQUIDEZ: VALOR INVESTIDO POR VENCIMENTO", styles['SectionTitle'])) 
     
-    img = Image(grafico_png(), width=160*mm, height=100*mm) # Aumentei um pouco a altura para acomodar o gráfico horizontal
+    img = Image(grafico_png(), width=160*mm, height=100*mm) 
     img.hAlign = 'CENTER'
     story.append(img)
     
     story.append(Spacer(1, 10*mm))
+
+    # --- NOVO BLOCO: TABELA DE DETALHAMENTO POR PAPEL ---
+    story.append(Paragraph("DETALHAMENTO POR PAPEL E TRIBUTAÇÃO", styles['SectionTitle']))
+    
+    data_tabela_detalhe = [
+        [Paragraph("Papel", styles['TableHeaderPDF']), 
+         Paragraph("Vencimento", styles['TableHeaderPDF']), 
+         Paragraph("Montante Bruto", styles['TableHeaderPDF']), 
+         Paragraph("Alíquota IR", styles['TableHeaderPDF']),
+         Paragraph("Imposto IR/IOF", styles['TableHeaderPDF']), 
+         Paragraph("Montante Líquido", styles['TableHeaderPDF'])]
+    ]
+    
+    for p in papeis_para_grafico: 
+        vencimento_date = p['Data Vencimento']
+        if isinstance(vencimento_date, pd.Timestamp):
+            vencimento_date = vencimento_date.date()
+        elif isinstance(vencimento_date, str):
+            try:
+                vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
+            except:
+                vencimento_date = datetime.date.today() 
+            
+        data_tabela_detalhe.append([
+            Paragraph(p['Ticker'], styles['TableCellPDF']),
+            Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
+            Paragraph(brl_pdf(p['Montante Bruto']), styles['TableCellPDF']),
+            Paragraph(f"{p['Alíquota IR']:.1f}%", styles['TableCellPDF']),
+            Paragraph(brl_pdf(p['Total Impostos']), styles['TableCellPDF']),
+            Paragraph(brl_pdf(p['Montante Líquido']), styles['TableCellPDF']),
+        ])
+
+    colWidths_detalhe = [total_width_pdf*0.15, total_width_pdf*0.15, total_width_pdf*0.2, total_width_pdf*0.15, total_width_pdf*0.2, total_width_pdf*0.15]
+    t_detalhe = Table(data_tabela_detalhe, colWidths=colWidths_detalhe)
+    t_detalhe.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'), # Alinha valores à direita
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    story.append(t_detalhe)
+    story.append(Spacer(1, 10*mm))
+    # --- FIM NOVO BLOCO ---
+
 
     # 7. Rodapé e Disclaimer 
     story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
