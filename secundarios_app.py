@@ -15,7 +15,7 @@ from io import BytesIO as PIOBytesIO
 import re
 import pandas as pd
 import numpy as np
-import matplotlib.ticker as mticker # Importar para formatação do eixo X/Y
+import matplotlib.ticker as mticker 
 
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS =====================
 st.markdown("""
@@ -358,17 +358,49 @@ def grafico_png():
     # Gera o Gráfico de Barras Horizontal (Timeline de Liquidez)
     fig_pdf, ax_pdf = plt.subplots(figsize=(10, 5)) 
     
-    ax_pdf.barh(df_timeline['Vencimento Formatado'], df_timeline['Valor Investido'], color=COR_PRIMARIA_FORM, alpha=0.8)
+    # 1. Plotar o gráfico e capturar os elementos do barh (bar_container)
+    bar_container = ax_pdf.barh(
+        df_timeline['Vencimento Formatado'], 
+        df_timeline['Valor Investido'], 
+        color=COR_PRIMARIA_FORM, 
+        alpha=0.8
+    )
     
-    ax_pdf.set_title("Timeline de Liquidez: Valor a Vencer por Mês/Ano", fontsize=14, color='black') 
-    ax_pdf.set_xlabel("Valor Investido (R$)", fontsize=12, color='black') 
+    ax_pdf.set_title("Timeline de Liquidez: Valor Investido por Vencimento (Mês/Ano)", fontsize=14, color='black') 
+    
+    # AJUSTE 1: Remover o rótulo do eixo X, pois o valor estará nas barras
+    ax_pdf.set_xlabel("") 
+    
+    # AJUSTE 2: Garantir que o rótulo do eixo Y é a data (Mês/Ano)
     ax_pdf.set_ylabel("Vencimento", fontsize=12, color='black')
     
-    # Formatação do eixo X como moeda
-    formatter = mticker.FuncFormatter(lambda x, pos: f'R$ {x:,.0f}'.replace(",", "X").replace(".", ",").replace("X", "."))
-    ax_pdf.xaxis.set_major_formatter(formatter)
+    # AJUSTE 3: Adicionar os valores (R$) como rótulos de dados (Data Labels)
+    for bar in bar_container:
+        width = bar.get_width() # O valor do eixo X (Valor Investido)
+        # Formatar o valor para R$
+        # Uso de 'brl' localmente ou uma formatação específica para o gráfico
+        valor_formatado = f'R$ {width:,.0f}'.replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        # Adicionar o rótulo de dados (Data Label)
+        ax_pdf.text(
+            width, # Posição X: na ponta da barra
+            bar.get_y() + bar.get_height()/2, # Posição Y: centro da barra
+            '  ' + valor_formatado, # Adicionar um pequeno espaço
+            va='center', # Alinhamento vertical no centro
+            ha='left', # Alinhamento horizontal à esquerda (fora da barra)
+            fontsize=9,
+            color='black',
+            fontweight='bold'
+        )
+
+    # Melhorar a visualização: Ajustar o limite do eixo X para acomodar os Data Labels
+    max_value = df_timeline['Valor Investido'].max()
+    ax_pdf.set_xlim(right=max_value * 1.20) # Aumenta o limite do eixo X em 20%
     
-    ax_pdf.tick_params(axis='x', rotation=0, labelsize=8, colors='black') 
+    # Ocultar os ticks e labels do eixo X (já que o valor está nas barras)
+    ax_pdf.xaxis.set_major_formatter(mticker.NullFormatter())
+    ax_pdf.tick_params(axis='x', length=0)
+    
     ax_pdf.tick_params(axis='y', labelsize=9, colors='black') 
     ax_pdf.grid(axis='x', alpha=0.3, linestyle='--')
     
