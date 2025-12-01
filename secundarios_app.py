@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 import base64
 from io import BytesIO
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -38,13 +39,12 @@ def carregar_logo():
 def brl(v):
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# ===================== CÁLCULO DO PAPEL (igual ao seu original) =====================
+# ===================== CÁLCULO DO PAPEL =====================
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     try:
         valor_investido = float(papel['Valor'])
         taxa_input = float(papel['Taxa'])
         tipo = papel['Tipo']
-        # Tratamento seguro da data de vencimento
         venc_str = papel.get('Data Vencimento')
         if pd.isna(venc_str) or venc_str is None:
             return None, "Data de vencimento ausente"
@@ -123,16 +123,14 @@ st.session_state.cdi_benchmark_geral = st.number_input(
 
 st.markdown("---")
 
-# ===================== TABELA DE PAPÉIS (SÓ AS 6 COLUNAS ORIGINAIS) =====================
+# ===================== TABELA DE PAPÉIS (6 COLUNAS) =====================
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
-# Cria DataFrame vazio se ainda não existir
 if st.session_state.papeis:
     df_papeis = pd.DataFrame(st.session_state.papeis)
 else:
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
 
-# Editor com apenas as 6 colunas que você quer
 edited_df = st.data_editor(
     df_papeis.rename(columns={
         'Valor': 'Valor Investido (R$)',
@@ -151,71 +149,83 @@ edited_df = st.data_editor(
     key="editor_papeis"
 )
 
-# Atualiza a session_state de forma segura
+# Atualiza session_state
 df_nova = edited_df.rename(columns={
     'Valor Investido (R$)': 'Valor',
     'Tipo de Taxa': 'Tipo',
     'Taxa (%)': 'Taxa',
     'Vencimento': 'Data Vencimento'
 })
-
-# Remove linhas incompletas (sem valor ou taxa)
-df_valida = df_nova.dropna(subset=['Valor', 'Taxa', 'Data Vencimento'])
-df_valida = df_valida[(df_valida['Valor'] > 0) & (df_valida['Taxa'] > 0)]
-
-st.session_state.papeis = df_valida.to_dict('records')
+st.session_state.papeis = df_nova.dropna(subset=['Valor', 'Taxa', 'Data Vencimento']).to_dict('records')
 
 if st.button("Limpar Todos os Papéis", type="primary"):
     st.session_state.papeis = []
     st.rerun()
 
-# ===================== RESTANTE DO CÓDIGO (cálculo + PDF) =====================
-# (mantive 100% igual ao seu original, só com a correção do erro acima)
-
-st.markdown("---")
-
+# ===================== CÁLCULOS E RESULTADO =====================
 if not st.session_state.papeis:
-    st.info("Adicione pelo menos um papel válido (com valor, taxa e vencimento) para calcular.")
+    st.info("Adicione pelo menos um papel válido.")
     st.stop()
 
-# Cálculos consolidados
 resultados = []
-erros = []
-for i, p in enumerate(st.session_state.papeis):
+for p in st.session_state.papeis:
     res, erro = calcular_papel(p, data_aplicacao, st.session_state.cdi_benchmark_geral)
     if res:
         resultados.append(res)
-    if erro:
-        erros.append(f"Papel {i+1}: {erro}")
-
-if erros:
-    st.warning("Alguns papéis foram ignorados:\n" + "\n".join(erros))
-
-if not resultados:
-    st.error("Nenhum papel válido para cálculo.")
-    st.stop()
 
 total_investido = sum(r['Valor Investido'] for r in resultados)
 total_bruto = sum(r['Montante Bruto'] for r in resultados)
-total_iof = sum(r['Imposto IOF'] for r in resultados)
-total_ir = sum(r['Imposto IR'] for r in resultados)
-total_impostos = total_iof + total_ir
+total_impostos = sum(r['Total Impostos'] for r in resultados)
 total_liquido = sum(r['Montante Líquido'] for r in resultados)
 rendimento_liquido_total = total_liquido - total_investido
 rentabilidade = (rendimento_liquido_total / total_investido) * 100 if total_investido > 0 else 0
 
-st.subheader("Resultado Consolidado da Simulação")
+st.markdown("---")
+st.subheader("Resultado Consolidado")
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Total Investido", brl(total_investido))
 c2.metric("Montante Bruto", brl(total_bruto))
-c3.metric("Impostos (IR + IOF)", brl(total_impostos))
+c3.metric("Impostos", brl(total_impostos))
 c4.metric("Montante Líquido", brl(total_liquido))
+st.markdown(f"**Rendimento Líquido:** {brl(rendimento_liquido_total)}")
+st.markdown(f"**Rentabilidade:** {rentabilidade:.2f}%")
 
-st.markdown(f"**Rendimento Líquido Total:** {brl(rendimento_liquido_total)}")
-st.markdown(f"**Rentabilidade Líquida Efetiva:** {rentabilidade:.2f}%")
+# ===================== PDF COM DOWNLOAD REAL =====================
+def criar_pdf():
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20*mm)
+    story = []
 
-# ===================== BOTÃO PDF (seu original) =====================
+    story.append(carregar_logo())
+    story.append(Spacer(1, 15*mm))
+    story.append(Paragraph("<b>SIMULAÇÃO CONSOLIDADA</b>", ParagraphStyle(name='Title', fontSize=20, alignment=1)))
+    story.append(Spacer(1, 20*mm))
+
+    dados = [["Cliente", nome_cliente], ["Assessor", nome_assessor], ["Data", data_simulacao.strftime('%d/%m/%Y')]]
+    t = Table(dados)
+    story.append(t)
+    story.append(Spacer(1, 20*mm))
+
+    resultado = [["TOTAL INVESTIDO", "MONTANTE BRUTO", "IMPOSTOS", "MONTANTE LÍQUIDO"],
+                 [brl(total_investido), brl(total_bruto), brl(total_impostos), brl(total_liquido)]]
+    t_res = Table(resultado)
+    t_res.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor("#6B48FF")),
+                               ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                               ('GRID', (0,0), (-1,-1), 1, colors.black)]))
+    story.append(t_res)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+# ===================== BOTÃO PDF COM DOWNLOAD =====================
 if st.button("BAIXAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
-    st.success("PDF gerado! (funcionando normalmente)")
+    with st.spinner("Gerando PDF..."):
+        pdf_data = criar_pdf()
+        b64 = base64.b64encode(pdf_data).decode()
+        href = f'<a href="data:application/pdf;base64,{b64}" download="Proposta_Secundarios.pdf"><h3>BAIXAR PDF AGORA</h3></a>'
+        st.markdown(href, unsafe_allow_html=True)
+        st.balloons()
+        st.success("PDF gerado com sucesso!")
 
-st.markdown(f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor}</b></p>", unsafe_allow_html=True)
