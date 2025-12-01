@@ -288,12 +288,78 @@ if papeis_anteriores_len != len(st.session_state.papeis):
     st.success("Tabela de papéis atualizada. Recalculando a simulação...")
     st.rerun()
 
-# Botão de Limpar Lista
-if st.button("Limpar Todos os Papéis", type="primary"):
+# ===================== FERRAMENTAS DA TABELA (Clonar e Limpar) =====================
+st.subheader("Ferramentas da Tabela", divider='gray')
+c_clone_select, c_clone_button, c_clear_button = st.columns([1, 1, 3])
+
+# Funções de ação
+def clone_papel():
+    if 'line_to_clone_select' in st.session_state and st.session_state.line_to_clone_select:
+        # Converte índice 1-baseado (usuário) para índice 0-baseado (lista)
+        index_to_clone = st.session_state.line_to_clone_select - 1
+        
+        if 0 <= index_to_clone < len(st.session_state.papeis):
+            original_papel = st.session_state.papeis[index_to_clone]
+            
+            # 1. Clona o dicionário
+            cloned_papel = original_papel.copy()
+            
+            # 2. Modifica Ticker e Emissor para denotar uma cópia e garantir unicidade
+            ticker_original = str(cloned_papel.get('Ticker', 'NOVO_PAPEL'))
+            
+            # Cria um novo Ticker único
+            copy_count = 1
+            new_ticker = f"{ticker_original} - CÓPIA {copy_count}"
+            while any(p.get('Ticker') == new_ticker for p in st.session_state.papeis):
+                copy_count += 1
+                new_ticker = f"{ticker_original} - CÓPIA {copy_count}"
+
+            cloned_papel['Ticker'] = new_ticker
+            cloned_papel['Emissor'] = str(cloned_papel.get('Emissor', 'NOVO EMISSOR')) + ' (CÓPIA)'
+            
+            # 3. Adiciona o clone à lista
+            st.session_state.papeis.append(cloned_papel)
+            
+            st.success(f"Linha {index_to_clone + 1} clonada com sucesso! Uma nova linha foi adicionada ao final.")
+            st.rerun()
+        else:
+            st.warning("Índice de linha inválido para clonagem.")
+
+def clear_papeis():
     st.session_state.papeis = []
     st.rerun()
+
+
+if st.session_state.papeis:
+    # 1. Select line to clone
+    clone_options = [i + 1 for i in range(len(st.session_state.papeis))]
+    # Seleciona o último item por padrão
+    default_index = len(clone_options) - 1 
+    
+    with c_clone_select:
+        line_to_clone_index = st.selectbox(
+            "Linha:",
+            options=clone_options,
+            index=default_index if default_index >= 0 else 0,
+            key="line_to_clone_select",
+            label_visibility="visible",
+            help="Selecione o número da linha que você deseja duplicar (1 é a primeira)."
+        )
+
+    # 2. Clone Button
+    with c_clone_button:
+        # Espaçador para alinhamento vertical com o selectbox
+        st.markdown("<p style='font-size: 10px; margin-bottom: -1px; visibility: hidden;'>.</p>", unsafe_allow_html=True)
+        st.button("Clonar", on_click=clone_papel, type="secondary", use_container_width=True)
+
+# 3. Clear Button
+with c_clear_button:
+    st.markdown("<p style='font-size: 10px; margin-bottom: -1px; visibility: hidden;'>.</p>", unsafe_allow_html=True)
+    if st.button("Limpar Todos os Papéis", type="primary", use_container_width=True):
+        clear_papeis()
     
 st.markdown("---")
+
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 
