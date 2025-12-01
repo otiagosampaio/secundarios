@@ -1,8 +1,7 @@
 streamlit
-pandas
-numpy
+python-dateutil
 matplotlib
 reportlab
-requests
 Pillow
-python-dateutil
+requests
+pandas
