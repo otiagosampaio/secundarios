@@ -12,10 +12,19 @@ from reportlab.lib.units import mm
 import requests
 from PIL import Image as PILImage
 from io import BytesIO as PIOBytesIO
-import re
 import pandas as pd
 import numpy as np
 import matplotlib.ticker as mticker
+import locale # Importar locale para precisão
+
+# Configuração de locale para formatação de moeda em Python (não Streamlit)
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
+    except locale.Error:
+        pass # Ignora se não conseguir configurar
 
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS =====================
 st.markdown("""
@@ -64,10 +73,11 @@ def carregar_logo():
     altura_calculada = largura_desejada * proporcao
     return Image(PIOBytesIO(response.content), width=largura_desejada, height=altura_calculada)
 
+# Funções de formatação de moeda
 brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# ===================== CÁLCULO PARA UM ÚNICO PAPEL =====================
+# ===================== CÁLCULO CORRIGIDO PARA UM ÚNICO PAPEL =====================
 
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
@@ -75,6 +85,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     tipo = papel['Tipo']
     taxa_input = papel['Taxa']
 
+    # --- 1. VALIDAÇÃO E PRAZO ---
     if isinstance(data_vencimento, pd.Timestamp):
         data_vencimento = data_vencimento.date()
     elif isinstance(data_vencimento, str):
@@ -85,59 +96,74 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
                 data_vencimento = datetime.datetime.strptime(data_vencimento, '%d/%m/%Y').date()
             except ValueError:
                 return None, f"Formato de Data de Vencimento inválido para {papel.get('Ticker', 'novo papel')}"
-    elif data_vencimento is None:
-        return None, f"Data de Vencimento nula para {papel.get('Ticker', 'novo papel')}"
 
+    # Prazo (diferença entre a data de vencimento e a data de aplicação)
     prazo_dias = (data_vencimento - data_aplicacao).days
     
-    if prazo_dias <= 0:
-        return None, f"Data de resgate inválida para {papel.get('Ticker', 'novo papel')}. Prazo: {prazo_dias} dias"
+    if prazo_dias <= 0 or valor_investido <= 0 or taxa_input <= 0:
+        return None, f"Dados inválidos para {papel.get('Ticker', 'novo papel')}"
     
-    if valor_investido <= 0 or taxa_input <= 0:
-        return None, f"Valor investido ({valor_investido}) ou Taxa ({taxa_input}%) inválida para {papel.get('Ticker', 'novo papel')}"
-
+    # Constante de cálculo financeiro (360 dias)
     dias_ano = 360
+    
+    # --- 2. TAXA REAL ---
     taxa_anual_real = taxa_input
-
     if tipo == "Pós-fixado (% do CDI)":
+        # Converte para taxa anual real em porcentagem (Ex: 122% do CDI * 14.90% = 18.178%)
         taxa_anual_real = taxa_cdi_benchmark * (taxa_input / 100)
     
-    # Formulação da taxa diária:
+    # Converte taxa anual (%) para fator diário
+    # Fórmula: (1 + TaxaAnual/100)^(1/360) - 1
     taxa_diaria = (1 + taxa_anual_real/100)**(1/dias_ano) - 1
 
+    # --- 3. CÁLCULO BRUTO ---
+    # Juros Compostos: Montante = Valor * (1 + TaxaDiária)^PrazoDias
     montante_bruto = valor_investido * (1 + taxa_diaria)**prazo_dias
     rendimento_bruto = montante_bruto - valor_investido
 
+    # --- 4. CÁLCULO IOF ---
     rendimento_apos_iof = rendimento_bruto
-    imposto_iof = 0
+    imposto_iof = 0.0
+    
     if prazo_dias < 30:
+        # Tabela IOF regressiva para os 29 dias (em porcentagem/100)
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
                      0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
-        idx = min(prazo_dias, 30) - 1
+        
+        idx = prazo_dias - 1
         aliquota_iof = iof_tab[idx]
+        
+        # IOF é aplicado sobre o Rendimento Bruto
         imposto_iof = rendimento_bruto * aliquota_iof
         rendimento_apos_iof = rendimento_bruto - imposto_iof
 
+    # --- 5. CÁLCULO IR ---
+    # Alíquota IR (Tabela Regressiva)
     aliquota_ir = 22.5 if prazo_dias <= 180 else 20.0 if prazo_dias <= 360 else 17.5 if prazo_dias <= 720 else 15.0
+    
+    # IR é aplicado sobre o Rendimento após o IOF
     imposto_ir = rendimento_apos_iof * (aliquota_ir/100)
     
+    # --- 6. RESULTADO FINAL ---
+    total_impostos = imposto_iof + imposto_ir
+    
+    # O montante líquido é o Investido + Rendimento após IOF - IR
     montante_liquido = valor_investido + rendimento_apos_iof - imposto_ir
     rendimento_liquido = montante_liquido - valor_investido
     
-    total_impostos = imposto_iof + imposto_ir
-
+    # Arredondamento final dos resultados financeiros (2 casas decimais)
     resultado = {
-        'Valor Investido': valor_investido,
-        'Montante Bruto': montante_bruto,
-        'Rendimento Bruto': rendimento_bruto,
-        'Imposto IOF': imposto_iof,
+        'Valor Investido': round(valor_investido, 2),
+        'Montante Bruto': round(montante_bruto, 2),
+        'Rendimento Bruto': round(rendimento_bruto, 2),
+        'Imposto IOF': round(imposto_iof, 2),
         'Alíquota IR': aliquota_ir,
-        'Imposto IR': imposto_ir,
-        'Total Impostos': total_impostos,
-        'Montante Líquido': montante_liquido,
-        'Rendimento Líquido': rendimento_liquido,
+        'Imposto IR': round(imposto_ir, 2),
+        'Total Impostos': round(total_impostos, 2),
+        'Montante Líquido': round(montante_liquido, 2),
+        'Rendimento Líquido': round(rendimento_liquido, 2),
         'Prazo Dias': prazo_dias,
-        'Taxa Anual Real': taxa_anual_real,
+        'Taxa Anual Real': round(taxa_anual_real, 4),
     }
 
     return resultado, None
@@ -256,6 +282,7 @@ papeis_anteriores_len = len(st.session_state.papeis)
 st.session_state.papeis = df_papeis_new.to_dict('records')
 
 if papeis_anteriores_len != len(st.session_state.papeis):
+    # Recalcula e re-executa apenas se houver mudança nos dados
     st.success("Tabela de papéis atualizada. Recalculando a simulação...")
     st.rerun()
 
@@ -275,6 +302,9 @@ if not st.session_state.papeis:
 resultados_calculados = []
 papeis_para_grafico = []
 
+# Garante que as variáveis de estado são atualizadas para a função de cálculo
+current_cdi_benchmark = st.session_state.cdi_benchmark_geral
+
 for papel in st.session_state.papeis:
     try:
         papel['Valor'] = float(papel['Valor'])
@@ -282,7 +312,7 @@ for papel in st.session_state.papeis:
     except (ValueError, TypeError):
         continue # Ignora papéis com valores não numéricos
         
-    resultado, erro = calcular_papel(papel, data_aplicacao, st.session_state.cdi_benchmark_geral)
+    resultado, erro = calcular_papel(papel, data_aplicacao, current_cdi_benchmark)
     if resultado:
         papel.update(resultado)
         resultados_calculados.append(resultado)
@@ -432,7 +462,7 @@ def criar_pdf_secundarios():
         [Paragraph("Cliente", styles['DataLabel']), Paragraph(nome_cliente, styles['DataValue']),
          Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(data_aplicacao.strftime('%d/%m/%Y'), styles['DataValue'])],
         [Paragraph("Assessor", styles['DataLabel']), Paragraph(nome_assessor, styles['DataValue']),
-         Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{st.session_state.cdi_benchmark_geral:.2f}% a.a.", styles['DataValue'])],
+         Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{current_cdi_benchmark:.2f}% a.a.", styles['DataValue'])],
     ]
     total_width_pdf = A4[0] - 30*mm
     t_dados = Table(data_geral, colWidths=[total_width_pdf*0.2, total_width_pdf*0.3, total_width_pdf*0.2, total_width_pdf*0.3])
@@ -611,6 +641,7 @@ if st.button("BAIXAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=
             pdf_data = criar_pdf_secundarios()
             b64 = base64.b64encode(pdf_data).decode()
             nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
+            # Importante: A linha st.balloons() foi removida daqui, como solicitado no início.
             href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
             st.markdown(href, unsafe_allow_html=True)
             st.success("Proposta premium gerada com sucesso!")
