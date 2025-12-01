@@ -605,7 +605,6 @@ def criar_pdf_secundarios():
     return buffer.getvalue()
 
 # ===================== BOTÃO PDF =====================
-# ===================== BOTÃO PDF =====================
 if st.button("BAIXAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     with st.spinner("Gerando sua proposta premium consolidada..."):
         try:
@@ -614,7 +613,6 @@ if st.button("BAIXAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=
             nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
             href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
             st.markdown(href, unsafe_allow_html=True)
-            # st.balloons() <-- LINHA REMOVIDA PARA TIRAR OS BALÕES
             st.success("Proposta premium gerada com sucesso!")
         except Exception as e:
             st.error(f"Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido para gerar a proposta. Erro: {e}")
