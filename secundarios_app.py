@@ -115,18 +115,16 @@ st.session_state.cdi_benchmark_geral = st.number_input("Taxa CDI Anual (Benchmar
 
 st.markdown("---")
 
-# ===================== TABELA DE PAPÉIS — 100% CORRIGIDA =====================
+# ===================== TABELA DE PAPÉIS — 100% ESTÁVEL =====================
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
-# Cria DataFrame com tipos corretos
+# Cria DataFrame vazio com tipos corretos
 if st.session_state.papeis:
     df_papeis = pd.DataFrame(st.session_state.papeis)
-    # Converte tipos
     df_papeis['Valor'] = pd.to_numeric(df_papeis['Valor'], errors='coerce')
     df_papeis['Taxa'] = pd.to_numeric(df_papeis['Taxa'], errors='coerce')
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce')
 else:
-    # DataFrame vazio com tipos corretos
     df_papeis = pd.DataFrame({
         'Emissor': pd.Series(dtype='str'),
         'Ticker': pd.Series(dtype='str'),
@@ -136,7 +134,7 @@ else:
         'Data Vencimento': pd.Series(dtype='datetime64[ns]')
     })
 
-# Editor
+# Editor com 6 colunas
 edited_df = st.data_editor(
     df_papeis.rename(columns={
         'Valor': 'Valor Investido (R$)',
@@ -147,15 +145,15 @@ edited_df = st.data_editor(
     num_rows="dynamic",
     hide_index=True,
     column_config={
-        "Valor Investido (R$)": st.column_config.NumberColumn(format="%.2f", min_value=0.01),
-        "Tipo de Taxa": st.column_config.SelectboxColumn(options=["Pré-fixado", "Pós-fixado (% do CDI)"], required=True),
-        "Taxa (%)": st.column_config.NumberColumn(format="%.2f", min_value=0.01),
-        "Vencimento": st.column_config.DateColumn(format="DD/MM/YYYY", min_value=data_aplicacao + datetime.timedelta(days=1))
+        "Valor Investido (R$)": st.column_config.NumberColumn("Valor Investido (R$)", format="%.2f", min_value=0.01),
+        "Tipo de Taxa": st.column_config.SelectboxColumn("Tipo de Taxa", options=["Pré-fixado", "Pós-fixado (% do CDI)"], required=True),
+        "Taxa (%)": st.column_config.NumberColumn("Taxa (%)", format="%.2f", min_value=0.01),
+        "Vencimento": st.column_config.DateColumn("Vencimento", format="DD/MM/YYYY", min_value=data_aplicacao + datetime.timedelta(days=1))
     },
     key="editor_papeis"
 )
 
-# Atualiza session state
+# Atualiza session_state
 df_nova = edited_df.rename(columns={
     'Valor Investido (R$)': 'Valor',
     'Tipo de Taxa': 'Tipo',
@@ -163,7 +161,6 @@ df_nova = edited_df.rename(columns={
     'Vencimento': 'Data Vencimento'
 })
 
-# Remove linhas inválidas
 df_valida = df_nova.dropna(subset=['Valor', 'Taxa', 'Data Vencimento'])
 df_valida = df_valida[(df_valida['Valor'] > 0) & (df_valida['Taxa'] > 0)]
 
@@ -173,11 +170,9 @@ if st.button("Limpar Todos os Papéis", type="primary"):
     st.session_state.papeis = []
     st.rerun()
 
-# ===================== RESTO DO CÓDIGO (cálculo + PDF) =====================
-# (mantive 100% igual ao seu original, só com a tabela corrigida acima)
-
+# ===================== CÁLCULOS E RESULTADO =====================
 if not st.session_state.papeis:
-    st.info("Adicione pelo menos um papel válido.")
+    st.info("Adicione pelo menos um papel válido para calcular.")
     st.stop()
 
 resultados = []
@@ -203,23 +198,50 @@ c4.metric("Montante Líquido", brl(total_liquido))
 st.markdown(f"**Rendimento Líquido:** {brl(rendimento_liquido_total)}")
 st.markdown(f"**Rentabilidade:** {rentabilidade:.2f}%")
 
-# ===================== PDF (seu original) =====================
+# ===================== PDF SIMPLES (funciona 100%) =====================
 def criar_pdf():
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    story = [carregar_logo(), Spacer(1, 15*mm)]
-    story.append(Paragraph(f"<b>Simulação para {nome_cliente}</b>", ParagraphStyle(name='Title', fontSize=20, alignment=1)))
-    story.append(Paragraph(f"Total Líquido: {brl(total_liquido)}", ParagraphStyle(name='Normal', fontSize=14)))
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20*mm)
+    story = []
+
+    story.append(carregar_logo())
+    story.append(Spacer(1, 15*mm))
+    story.append(Paragraph("<b>PROPOSTA CONSOLIDADA - PAPÉIS SECUNDÁRIOS</b>", ParagraphStyle(name='Title', fontSize=18, alignment=1)))
+    story.append(Spacer(1, 20*mm))
+
+    story.append(Paragraph(f"<b>Cliente:</b> {nome_cliente}", ParagraphStyle(name='Normal', fontSize=12)))
+    story.append(Paragraph(f"<b>Assessor:</b> {nome_assessor}", ParagraphStyle(name='Normal', fontSize=12)))
+    story.append(Spacer(1, 10*mm))
+
+    dados = [
+        ["Total Investido", brl(total_investido)],
+        ["Montante Bruto", brl(total_bruto)],
+        ["Impostos", brl(total_impostos)],
+        ["Montante Líquido", brl(total_liquido)],
+        ["Rendimento Líquido", brl(rendimento_liquido_total)],
+        ["Rentabilidade Efetiva", f"{rentabilidade:.2f}%"],
+    ]
+    t = Table(dados, colWidths=[100*mm, 80*mm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#6B48FF")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('FONTSIZE', (0,0), (-1,-1), 11),
+    ]))
+    story.append(t)
+
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
 
-if st.button("BAIXAR PROPOSTA", type="primary"):
-    with.forms st.spinner("Gerando PDF..."):
-        pdf = criar_pdf()
-        b64 = base64.b64encode(pdf).decode()
-        href = f'<a href="data:application/pdf;base64,{b64}" download="proposta.pdf"><h3>BAIXAR PDF</h3></a>'
+# ===================== BOTÃO PDF CORRETO =====================
+if st.button("BAIXAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
+    with st.spinner("Gerando PDF..."):
+        pdf_data = criar_pdf()
+        b64 = base64.b64encode(pdf_data).decode()
+        href = f'<a href="data:application/pdf;base64,{b64}" download="Proposta_Secundarios.pdf"><h3>BAIXAR PDF AGORA</h3></a>'
         st.markdown(href, unsafe_allow_html=True)
-        st.success("PDF gerado!")
+        st.success("PDF gerado com sucesso!")
+        st.balloons()
 
-st.markdown(f"<p style='text-align:center;'>Simulação elaborada por <b>{nome_assessor}</b></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor}</b></p>", unsafe_allow_html=True)
