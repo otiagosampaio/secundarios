@@ -130,6 +130,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
                      0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
         
+        # O IOF é aplicado do 1º ao 29º dia. Prazo - 1 para obter o índice (0 a 28)
         idx = prazo_dias - 1
         aliquota_iof = iof_tab[idx]
         
@@ -139,6 +140,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 
     # --- 5. CÁLCULO IR ---
     # Alíquota IR (Tabela Regressiva)
+    # Correto: 180 dias ou menos (22.5), 181 a 360 (20.0), 361 a 720 (17.5), acima de 720 (15.0)
     aliquota_ir = 22.5 if prazo_dias <= 180 else 20.0 if prazo_dias <= 360 else 17.5 if prazo_dias <= 720 else 15.0
     
     # IR é aplicado sobre o Rendimento após o IOF
