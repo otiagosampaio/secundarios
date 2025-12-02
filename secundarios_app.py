@@ -328,7 +328,7 @@ if st.session_state.papeis:
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
-    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
+    df_papeis = pd.DataFrame(columns=['Emissor', 'Código', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
 
 
 # Renomear colunas para exibição amigável
