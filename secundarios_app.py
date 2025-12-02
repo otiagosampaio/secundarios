@@ -218,7 +218,7 @@ def generate_execution_message(papeis, codigo_cliente):
     for p in papeis:
         # 1. Recupera dados do papel
         emissor = p.get('Emissor', 'N/A')
-        ticker = p.get('Ticker', 'N/A')
+        ticker = p.get('Código', 'N/A')
         valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
         taxa_input = p.get('Taxa', 0.0)
         tipo = p.get('Tipo', 'Pré-fixado')
