@@ -84,7 +84,6 @@ ASSESSORES_LISTA = [
 
 # ===================== FUNÇÕES AUXILIARES =====================
 
-# ... (funções carregar_logo, brl, brl_pdf, calcular_papel, generate_execution_message permanecem iguais) ...
 def carregar_logo():
     # Esta função é usada apenas para o PDF
     url = URL_LOGO_WHITE
@@ -241,7 +240,7 @@ def generate_execution_message(papeis, codigo_cliente):
     return message
 
 
-# ===================== FUNÇÃO DE PERSISTÊNCIA (NOVO) =====================
+# ===================== FUNÇÃO DE PERSISTÊNCIA (SALVAR) =====================
 
 def save_proposal_to_csv(papeis_para_grafico, nome_assessor, nome_cliente, codigo_cliente):
     """
@@ -286,25 +285,62 @@ def save_proposal_to_csv(papeis_para_grafico, nome_assessor, nome_cliente, codig
     df_new_data = pd.DataFrame(data_to_save)
     
     # 2. Verificar se o arquivo existe para definir se precisa de cabeçalho
-    is_new_file = not os.path.exists(CSV_FILE)
+    # Se o arquivo não existe OU se ele existe mas está vazio (não tem 25 bytes, por exemplo), adiciona o cabeçalho
+    is_new_file = not os.path.exists(CSV_FILE) or os.path.getsize(CSV_FILE) == 0
     
     # 3. Salvar (append se existir, write com cabeçalho se for novo)
     try:
         # Usa 'a' para anexar e ';', '.' para garantir o formato CSV
-        with open(CSV_FILE, 'a', encoding='utf-8') as f:
-            df_new_data.to_csv(f, 
-                               header=is_new_file, 
-                               index=False, 
-                               sep=';', 
-                               decimal='.') 
+        # header=is_new_file garante que o cabeçalho só é escrito na primeira vez
+        df_new_data.to_csv(CSV_FILE, 
+                           mode='a',
+                           header=is_new_file, 
+                           index=False, 
+                           sep=';', 
+                           decimal='.') 
         
         return simulation_id
     except Exception as e:
         st.error(f"Erro ao salvar no CSV: {e}")
         return None
 
+# ===================== FUNÇÃO DE VERIFICAÇÃO E LEITURA (CONSULTA) =====================
 
-# ... (restante das funções e constantes) ...
+def display_csv_content():
+    """Carrega o arquivo CSV e exibe seu conteúdo para verificação."""
+    if not os.path.exists(CSV_FILE):
+        st.info(f"O arquivo '{CSV_FILE}' ainda não foi criado ou salvo nesta sessão.")
+        return False
+        
+    try:
+        # Usa o separador e o ponto decimal definidos em save_proposal_to_csv
+        df_propostas = pd.read_csv(CSV_FILE, sep=';', decimal='.')
+        
+        # Filtra colunas de identificação para melhor visualização inicial
+        colunas_identificacao = ['codigo_simulacao', 'data_hora_geracao', 'nome_assessor', 'nome_cliente', 'codigo_cdb', 'valor_investido']
+        
+        st.subheader(f"Conteúdo Atual do Arquivo {CSV_FILE}", divider='gray')
+        
+        if df_propostas.empty:
+            st.warning(f"O arquivo '{CSV_FILE}' existe, mas não contém propostas salvas.")
+            return False
+            
+        st.info(f"Total de **{len(df_propostas)}** registros de papéis salvos em **{len(df_propostas['codigo_simulacao'].unique())}** propostas.")
+        
+        # Usa um st.expander para não poluir a interface, mas manter acessível
+        with st.expander("Clique para visualizar todos os dados salvos"):
+            st.dataframe(df_propostas[colunas_identificacao + [c for c in df_propostas.columns if c not in colunas_identificacao]], use_container_width=True)
+            
+        return True
+    
+    except pd.errors.EmptyDataError:
+        st.warning(f"O arquivo '{CSV_FILE}' existe, mas está vazio.")
+        return False
+    except Exception as e:
+        st.error(f"Erro ao carregar o CSV para verificação: {e}")
+        return False
+
+# ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
 def grafico_png():
     df_pdf = pd.DataFrame(papeis_para_grafico)
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
@@ -787,7 +823,7 @@ st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}
 st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ===================== BOTÃO PDF (AGORA SALVA ANTES DE GERAR) =====================
+# ===================== BOTÃO PDF (SALVA ANTES DE GERAR) =====================
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     # VALIDAÇÃO DO CAMPO OBRIGATÓRIO (Nome do Assessor)
     if st.session_state['nome_assessor_selected_key'] == "Selecione um Assessor...":
@@ -795,7 +831,7 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
     else:
         with st.spinner("Gerando e salvando sua proposta premium consolidada..."):
             try:
-                # 1. SALVAR DADOS NO CSV (NOVO PASSO)
+                # 1. SALVAR DADOS NO CSV 
                 nome_assessor_atual = st.session_state['nome_assessor_selected_key']
                 nome_cliente_atual = st.session_state['nome_cliente']
                 codigo_cliente_atual = st.session_state['codigo_cliente']
@@ -815,6 +851,9 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 st.markdown(href, unsafe_allow_html=True)
                 
                 st.success(f"Proposta com ID **{sim_id}** salva no CSV e PDF gerado com sucesso! Clique no link acima para baixar.")
+                
+                # Força a atualização da seção de consulta
+                st.experimental_rerun()
             
             except Exception as e:
                 if "papéis válidos" in str(e):
@@ -837,6 +876,13 @@ if papeis_para_grafico:
     
 else:
     st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
+
+# ===================== VERIFICAÇÃO E GESTÃO DE PROPOSTAS SALVAS (NOVO) =====================
+
+st.markdown("---")
+st.subheader("Consulta e Verificação de Propostas Salvas", divider='gray')
+
+display_csv_content() # CHAMA A FUNÇÃO DE LEITURA
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
