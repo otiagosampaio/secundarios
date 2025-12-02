@@ -9,7 +9,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import mm
-import requests # Importação necessária para a API do IBGE
+import requests
 from PIL import Image as PILImage
 from io import BytesIO as PIOBytesIO
 import pandas as pd
@@ -29,10 +29,10 @@ except locale.Error:
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS E CORES =====================
 st.markdown("""
 <style>
-/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 70% da largura da tela 
-   (Ajustado para acomodar a barra lateral) */
+/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 80% da largura da tela 
+   (REVERTIDO: Largura aumentada novamente após remoção da barra lateral) */
 .main .block-container {
-    max-width: 70% !important; 
+    max-width: 80% !important; 
     padding-left: 2rem;
     padding-right: 2rem;
 }
@@ -58,16 +58,13 @@ div.stButton > button[data-testid="baseButton-primary"]:hover {
     border-color: #3C9F68;
 }
 
-/* Ajusta o padding da sidebar */
-[data-testid="stSidebar"] {
-    padding-top: 2rem; 
-    padding-left: 1rem;
-    padding-right: 1rem;
-}
+/* O CSS para o sidebar foi removido */
+
 </style>
 """, unsafe_allow_html=True)
 
 # ===================== CONFIGURAÇÃO INICIAL E CONSTANTES =====================
+# O layout 'wide' garante que o app use toda a largura disponível
 st.set_page_config(page_title="Traders Secundários - Calculadora", layout="wide")
 
 URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" # Altere para o seu logo
@@ -106,28 +103,10 @@ def carregar_logo():
 brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# ===================== FUNÇÃO DE BUSCA DE NOTÍCIAS (NOVO) =====================
+# ===================== FUNÇÃO DE BUSCA DE NOTÍCIAS (REMOVIDA) =====================
+# A função fetch_ibge_news e a cached_fetch_ibge_news foram removidas.
 
-def fetch_ibge_news(num_items=5):
-    """Busca as últimas notícias do IBGE."""
-    try:
-        # Endpoint para 'noticias' (noticias)
-        # O parâmetro 'qtd' limita o número de itens. 'tipo=noticia' para focar em notícias.
-        url = f"https://servicodados.ibge.gov.br/api/v3/noticias/?qtd={num_items}&tipo=noticia"
-        response = requests.get(url, timeout=5)
-        response.raise_for_status() # Lança exceção para códigos de erro HTTP (4xx ou 5xx)
-        data = response.json()
-
-        # O retorno é um dicionário com a chave 'items' contendo a lista de notícias
-        if 'items' in data:
-            return data['items']
-        return []
-    except requests.exceptions.RequestException as e:
-        # Usamos st.sidebar.error pois esta função é chamada dentro do contexto da sidebar
-        st.sidebar.error(f"Erro ao carregar notícias do IBGE.")
-        return []
-
-# ===================== CÁLCULO FINANCEIRO (Inalterado) =====================
+# ===================== CÁLCULO FINANCEIRO =====================
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
     data_vencimento = papel['Data Vencimento']
@@ -208,8 +187,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 
     return resultado, None
 
-# ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO (Inalterada) =====================
-
+# ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
 def generate_execution_message(papeis, codigo_cliente):
     """Gera a mensagem formatada para a mesa de operações."""
     
@@ -218,7 +196,7 @@ def generate_execution_message(papeis, codigo_cliente):
     for p in papeis:
         # 1. Recupera dados do papel
         emissor = p.get('Emissor', 'N/A')
-        ticker = p.get('Código', 'N/A')
+        ticker = p.get('Ticker', 'N/A')
         valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
         taxa_input = p.get('Taxa', 0.0)
         tipo = p.get('Tipo', 'Pré-fixado')
@@ -328,7 +306,7 @@ if st.session_state.papeis:
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
-    df_papeis = pd.DataFrame(columns=['Emissor', 'Código', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
+    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
 
 
 # Renomear colunas para exibição amigável
@@ -460,7 +438,7 @@ st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}
 st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO (Inalteradas) =====================
+# ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
 def grafico_png():
     df_pdf = pd.DataFrame(papeis_para_grafico)
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
@@ -764,45 +742,6 @@ if papeis_para_grafico:
     
 else:
     st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
-
-# ===================== BARRA LATERAL DE NOTÍCIAS (NOVO) =====================
-with st.sidebar:
-    st.title("🗞️ Notícias de Economia")
-    st.caption("Últimas notícias do IBGE (Atualiza a cada 10 min)")
-    st.markdown("---")
-
-    # Função com cache para a busca de notícias
-    @st.cache_data(ttl=600) # Cache por 10 minutos (600 segundos)
-    def cached_fetch_ibge_news():
-        # Buscamos 7 itens para garantir que a barra lateral tenha conteúdo
-        return fetch_ibge_news(num_items=7) 
-
-    news_items = cached_fetch_ibge_news()
-    
-    if news_items:
-        for item in news_items:
-            # Assumindo que 'titulo', 'link' e 'data_publicacao' são as chaves
-            titulo = item.get('titulo')
-            link = item.get('link')
-            data_publicacao = item.get('data_publicacao')
-            
-            data_formatada = ""
-            if data_publicacao:
-                try:
-                    # O formato da API é 'AAAA-MM-DD HH:MM:SS'. Pegamos apenas a data.
-                    dt_obj = datetime.datetime.strptime(data_publicacao.split()[0], '%Y-%m-%d')
-                    data_formatada = dt_obj.strftime('%d/%m/%Y')
-                except:
-                    data_formatada = ""
-
-            # Exibe o título como um link
-            st.markdown(f"**[{titulo}]({link})**")
-            if data_formatada:
-                st.caption(f"Publicado em: {data_formatada}")
-            st.markdown("---")
-    else:
-        st.info("Não foi possível carregar as notícias de economia no momento.")
-# Fim da barra lateral
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
