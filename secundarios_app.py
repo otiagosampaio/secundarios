@@ -310,8 +310,8 @@ def clear_papeis():
     st.session_state.papeis = []
     st.rerun()
 
-# Botão Limpar
-if st.button("Limpar Todos os Papéis", type="primary", use_container_width=True):
+# Botão Limpar (Alterado para estilo padrão)
+if st.button("Limpar Todos os Papéis", use_container_width=True):
     clear_papeis()
     
 st.markdown("---")
