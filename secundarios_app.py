@@ -774,7 +774,13 @@ else:
 with st.sidebar:
     st.title("📊 Desempenho (Mês Atual)")
     
-    # 1. Preparar os dados
+    # --- CORREÇÃO APLICADA AQUI ---
+    # 1. Definir 'hoje' e o mês/ano corrente ANTES do filtro.
+    hoje = datetime.date.today()
+    mes_corrente = hoje.month
+    ano_corrente = hoje.year
+    
+    # 2. Preparar os dados
     if st.session_state.historico_propostas:
         df_historico = pd.DataFrame(st.session_state.historico_propostas)
         
@@ -783,10 +789,6 @@ with st.sidebar:
         df_historico['Valor Investido'] = pd.to_numeric(df_historico['Valor Investido'], errors='coerce')
         
         # Filtrar apenas o mês corrente (baseado na data de hoje)
-        hoje = datetime.date.today()
-        mes_corrente = hoje.month
-        ano_corrente = hoje.year
-        
         df_mes = df_historico[
             (df_historico['Data Simulação'].dt.month == mes_corrente) & 
             (df_historico['Data Simulação'].dt.year == ano_corrente)
@@ -794,11 +796,11 @@ with st.sidebar:
     else:
         df_mes = pd.DataFrame()
         
-    # 2. Métricas Totais do Mês
+    # 3. Métricas Totais do Mês
     total_propostas = len(df_mes)
     total_investido_mes = df_mes['Valor Investido'].sum() if not df_mes.empty else 0
     
-    st.markdown(f"**{hoje.strftime('%B de %Y').upper()}**")
+    st.markdown(f"**{hoje.strftime('%B de %Y').upper()}**") # <-- AGORA 'hoje' ESTÁ DEFINIDO
     st.markdown("---")
     
     st.metric(
@@ -811,7 +813,7 @@ with st.sidebar:
     )
     st.markdown("---")
     
-    # 3. Métricas por Assessor
+    # 4. Métricas por Assessor
     st.subheader("Por Assessor")
     
     if total_propostas > 0:
