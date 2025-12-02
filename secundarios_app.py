@@ -204,24 +204,23 @@ st.markdown(f"<h3 style='text-align: center; color: {TEXTO_PRINCIPAL_ST};'>Calcu
 st.markdown(f"<p style='text-align: center; font-size: 15px; margin-bottom: 20px;'>Adicione e gerencie os papéis diretamente na tabela abaixo para simular o resultado consolidado para o cliente.</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ===================== DADOS GERAIS DA SIMULAÇÃO =====================
+# ===================== DADOS GERAIS DA SIMULAÇÃO (LAYOUT REORGANIZADO) =====================
 st.subheader("Dados Gerais da Simulação", divider='gray')
 
-# NOVO LAYOUT DE 3 COLUNAS PARA NOME, CÓDIGO E ASSESSOR
+# LINHA 1: Nome do Cliente, Código do Cliente, Nome do Assessor
 col_nome, col_cod, col_assessor = st.columns(3)
 
 with col_nome:
     nome_cliente = st.text_input("Nome do Cliente", "João Silva")
 
 with col_cod:
-    # NOVO CAMPO: Código do Cliente
     codigo_cliente = st.text_input("Código do Cliente", "")
 
 with col_assessor:
     nome_assessor = st.text_input("Nome do Assessor", "")
 
-# LAYOUT DE 2 COLUNAS PARA DATAS
-col_data_sim, col_data_app = st.columns(2)
+# LINHA 2: Data da Simulação, Data de Aplicação, Taxa CDI Anual (Benchmark)
+col_data_sim, col_data_app, col_cdi = st.columns(3)
 
 with col_data_sim:
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
@@ -229,12 +228,12 @@ with col_data_sim:
 with col_data_app:
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
-st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral')
+with col_cdi:
+    st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral')
     
 st.markdown("---")
 
 # ===================== TABELA DE PAPÉIS ADICIONADOS (Inclusão, Edição e Remoção pela Tabela) =====================
-# ... (O restante da seção da tabela de papéis não foi alterado) ...
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
 # Prepara o DataFrame para o editor
@@ -385,7 +384,7 @@ st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DEST
 st.markdown("---")
 
 # ===================== PDF GERAÇÃO (COM GRÁFICO E NOVA TABELA DE DETALHE) =====================
-# ... (Função grafico_png não alterada) ...
+# ... (Funções de PDF e Gráfico não alteradas) ...
 def grafico_png():
     # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
     df_pdf = pd.DataFrame(papeis_para_grafico)
@@ -463,7 +462,6 @@ def grafico_png():
     plt.close(fig_pdf) # Fechas a figura para não poluir o Streamlit
     
     return buf
-# ... (Fim da função grafico_png) ...
 
 def criar_pdf_secundarios():
     # Verifica se há papéis para evitar erros no PDF
