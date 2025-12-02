@@ -193,6 +193,7 @@ def generate_execution_message(papeis, codigo_cliente):
         # Ticker é a chave interna que agora é exibida como Código
         codigo = p.get('Ticker', 'N/A') 
         valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
+        qtde = p.get('Qtde', 1.0) # NOVO: Recupera a quantidade
         taxa_input = p.get('Taxa', 0.0)
         tipo = p.get('Tipo', 'Pré-fixado')
         vencimento_date = p.get('Data Vencimento')
@@ -220,8 +221,11 @@ def generate_execution_message(papeis, codigo_cliente):
         # 4. Formata Valor
         valor_str = brl(valor).replace("R$ ", "") 
 
-        # 5. Constrói a linha (usando 'codigo')
-        line = f"{emissor} - {codigo} - {taxa_str} - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
+        # 5. Formata Qtde e Constrói a linha (usando 'codigo')
+        qtde_str = f"{int(qtde)}" if float(qtde).is_integer() else f"{qtde:.2f}"
+        
+        # Inclusão da Qtde após a taxa (taxa_str)
+        line = f"{emissor} - {codigo} - {taxa_str} - {qtde_str} Qtde - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
         
         message += line + "\n"
 
@@ -297,11 +301,16 @@ st.subheader("Papéis Incluídos para Simulação", divider='gray')
 # Prepara o DataFrame para o editor
 if st.session_state.papeis:
     df_papeis = pd.DataFrame(st.session_state.papeis)
+    # Garante que 'Qtde' existe, ou usa 1.0 como padrão se for a primeira vez
+    if 'Qtde' not in df_papeis.columns:
+        df_papeis['Qtde'] = 1.0
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
+    df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) # Conversão de tipo
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
-    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
+    # Adiciona 'Qtde' na criação do DataFrame vazio
+    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
 
 
 # Renomear colunas para exibição amigável (Ticker -> Código)
@@ -309,12 +318,14 @@ df_papeis_edit = df_papeis.rename(columns={
     'Emissor': 'Emissor',
     'Ticker': 'Código',
     'Valor': 'Valor Investido (R$)',
+    'Qtde': 'Qtde.', # NOVO: Mapeamento da Qtde
     'Tipo': 'Tipo de Taxa',
     'Taxa': 'Taxa (%)',
     'Data Vencimento': 'Vencimento',
 })
 
-colunas_data_editor = ['Emissor', 'Código', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
+# NOVO ORDEM: Inclui 'Qtde.' após 'Valor Investido (R$)'
+colunas_data_editor = ['Emissor', 'Código', 'Valor Investido (R$)', 'Qtde.', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
 
 st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
 
@@ -328,6 +339,13 @@ edited_df = st.data_editor(
             format="%.2f",
             step=0.01,
             min_value=0.01,
+        ),
+        "Qtde.": st.column_config.NumberColumn( # NOVO: Configuração da Qtde
+            "Qtde.",
+            format="%.0f",
+            step=1,
+            min_value=1,
+            default=1,
         ),
         "Tipo de Taxa": st.column_config.SelectboxColumn(
             "Tipo de Taxa",
@@ -354,6 +372,7 @@ edited_df = st.data_editor(
 df_papeis_new = edited_df.rename(columns={
     'Código': 'Ticker', 
     'Valor Investido (R$)': 'Valor',
+    'Qtde.': 'Qtde', # NOVO: Mapeamento de volta para chave interna
     'Tipo de Taxa': 'Tipo',
     'Taxa (%)': 'Taxa',
     'Vencimento': 'Data Vencimento',
@@ -400,6 +419,8 @@ for papel in st.session_state.papeis:
         papel_temp = papel.copy()
         papel_temp['Valor'] = float(papel_temp['Valor'])
         papel_temp['Taxa'] = float(papel_temp['Taxa'])
+        # Qtde é apenas para a mensagem, mas garantimos o float
+        papel_temp['Qtde'] = float(papel_temp.get('Qtde', 1.0))
     except (ValueError, TypeError):
         continue
         
@@ -654,7 +675,7 @@ def criar_pdf_secundarios():
          Paragraph("Montante Líquido", styles['TableHeaderPDF'])]
     ]
     
-    # Início do loop (aqui estava o erro de indentação)
+    # Início do loop
     for p in papeis_para_grafico:
         vencimento_date = p['Data Vencimento']
         if isinstance(vencimento_date, pd.Timestamp):
@@ -665,7 +686,6 @@ def criar_pdf_secundarios():
             except:
                 vencimento_date = st.session_state.data_aplicacao
         
-        # CORREÇÃO: Esta linha estava indentada no 'elif' acima e agora está no nível do 'for'
         data_tabela_detalhe.append([
             Paragraph(p['Ticker'], styles['TableCellPDF']), # Acesso pela chave interna 'Ticker'
             Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
