@@ -204,6 +204,54 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     return resultado, None
 # ... (Fim da função calcular_papel) ...
 
+# ===================== FUNÇÕES PARA SALVAR SIMULAÇÃO (NOVO) =====================
+def calcular_totais_para_salvar(papeis_list, data_aplicacao, cdi_benchmark):
+    """Calcula o total investido e a contagem de papéis válidos a partir de uma lista de papéis."""
+    total_investido = 0.0
+    valid_papers_count = 0
+    for papel in papeis_list:
+        try:
+            # Garante que os valores são floats antes de passar para a função de cálculo
+            papel_temp = papel.copy()
+            papel_temp['Valor'] = float(papel_temp['Valor'])
+            papel_temp['Taxa'] = float(papel_temp['Taxa'])
+            
+            # Re-executa o cálculo do papel
+            resultado, _ = calcular_papel(papel_temp, data_aplicacao, cdi_benchmark)
+            if resultado:
+                total_investido += resultado['Valor Investido']
+                valid_papers_count += 1
+        except Exception:
+            continue
+    return total_investido, valid_papers_count
+
+def handle_save_simulation(nome_cliente, nome_assessor, data_simulacao, papeis_list, data_aplicacao, cdi_benchmark):
+    """Valida e salva a simulação no histórico."""
+    
+    total_investido, valid_papers_count = calcular_totais_para_salvar(papeis_list, data_aplicacao, cdi_benchmark)
+    
+    if nome_assessor == "Selecione um Assessor...":
+        st.error("O campo **Nome do Assessor** é obrigatório para salvar a simulação.")
+        return False
+        
+    if valid_papers_count == 0:
+        st.error("A simulação deve ter pelo menos um papel válido (Valor > R$0, Taxa > 0% e Vencimento futuro) para ser salva.")
+        return False
+        
+    # Salvar a simulação usando o total investido calculado
+    if nome_assessor != "Selecione um Assessor...":
+        # Usamos a função auxiliar
+        adicionar_ao_historico(nome_assessor, data_simulacao, total_investido)
+        
+        st.success(f"Simulação do cliente **{nome_cliente}** (Volume: {brl(total_investido)}) salva com sucesso! O dashboard na barra lateral será atualizado.")
+        
+        # O rerun é importante para atualizar o dashboard da sidebar
+        st.rerun() 
+        return True
+    return False
+# ===================== FIM FUNÇÕES PARA SALVAR SIMULAÇÃO =====================
+
+
 # ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
 
 def generate_execution_message(papeis, codigo_cliente):
@@ -407,6 +455,20 @@ if st.button("Limpar Todos os Papéis", use_container_width=True):
     
 st.markdown("---")
 
+# ===================== BOTÃO SALVAR SIMULAÇÃO (NOVO) =====================
+st.subheader("Salvar Simulação", divider='gray')
+st.caption("A simulação será armazenada no dashboard lateral, sem gerar o PDF.")
+
+if st.button("Salvar Simulação", key='save_simulation_btn', use_container_width=True, type='secondary'):
+    handle_save_simulation(
+        nome_cliente, 
+        nome_assessor, 
+        data_simulacao, 
+        st.session_state.papeis, 
+        data_aplicacao, 
+        st.session_state.cdi_benchmark_geral
+    )
+st.markdown("---") 
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 if not st.session_state.papeis:
@@ -726,7 +788,7 @@ def criar_pdf_secundarios():
     return buffer.getvalue()
 
 
-# ===================== BOTÃO PDF (Com validação e Adição ao Histórico) =====================
+# ===================== BOTÃO PDF (Com validação - SALVAMENTO REMOVIDO) =====================
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     # VALIDAÇÃO DO CAMPO OBRIGATÓRIO (Nome do Assessor)
     if nome_assessor == "Selecione um Assessor...":
@@ -741,10 +803,9 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 st.markdown(href, unsafe_allow_html=True)
                 st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
                 
-                # ADICIONA AO HISTÓRICO APÓS GERAÇÃO BEM SUCEDIDA
-                adicionar_ao_historico(nome_assessor, data_simulacao, total_investido)
-                st.rerun() # Re-executa para atualizar o dashboard na sidebar
-
+                # O SALVAMENTO AUTOMÁTICO FOI REMOVIDO DAQUI
+                # O usuário deve usar o botão "Salvar Simulação"
+            
             except Exception as e:
                 if "papéis válidos" in str(e):
                     st.error("Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido na tabela (Valor > R$0, Taxa > 0% e Vencimento futuro).")
