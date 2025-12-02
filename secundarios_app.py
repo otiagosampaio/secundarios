@@ -332,8 +332,6 @@ st.markdown("---")
 
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
-# ... (Seção de cálculos não alterada) ...
-
 if not st.session_state.papeis:
     st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
     st.stop()
@@ -354,8 +352,8 @@ for papel in st.session_state.papeis:
     resultado, erro = calcular_papel(papel, data_aplicacao, current_cdi_benchmark)
     if resultado:
         papel.update(resultado)
-        resultados_calculados.append(resultado)
         papeis_para_grafico.append(papel)
+        resultados_calculados.append(resultado)
     elif erro:
         st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
 
@@ -383,9 +381,9 @@ st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}
 st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ===================== PDF GERAÇÃO (COM GRÁFICO E NOVA TABELA DE DETALHE) =====================
-# ... (Funções de PDF e Gráfico não alteradas) ...
+# ===================== PDF GERAÇÃO (Funções de PDF e Gráfico não alteradas) =====================
 def grafico_png():
+    # ... (implementação da função grafico_png) ...
     # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
     df_pdf = pd.DataFrame(papeis_para_grafico)
     
@@ -464,7 +462,7 @@ def grafico_png():
     return buf
 
 def criar_pdf_secundarios():
-    # Verifica se há papéis para evitar erros no PDF
+    # ... (implementação da função criar_pdf_secundarios) ...
     if not papeis_para_grafico:
         raise ValueError("Não há papéis válidos para gerar a proposta consolidada.")
         
@@ -678,8 +676,60 @@ def criar_pdf_secundarios():
     buffer.seek(0)
     return buffer.getvalue()
 
+# ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
+
+def generate_execution_message(papeis, codigo_cliente):
+    """Gera a mensagem formatada para a mesa de operações."""
+    
+    message = "Solicito seguir com a aplicação com os detalhes abaixo:\n\n"
+    
+    for p in papeis:
+        # 1. Recupera dados do papel
+        emissor = p.get('Emissor', 'N/A')
+        ticker = p.get('Ticker', 'N/A')
+        # Garantindo que p['Valor Investido'] existe após o cálculo
+        valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
+        taxa_input = p.get('Taxa', 0.0)
+        tipo = p.get('Tipo', 'Pré-fixado')
+        vencimento_date = p.get('Data Vencimento')
+
+        # 2. Formata Taxa
+        if tipo == 'Pré-fixado':
+            taxa_str = f"{taxa_input:.2f}% a.a."
+        elif tipo == 'Pós-fixado (% do CDI)':
+            taxa_str = f"{taxa_input:.2f}% do CDI"
+        else:
+            taxa_str = f"{taxa_input:.2f}%"
+
+        # 3. Formata Vencimento
+        vencimento_str = 'N/A'
+        if isinstance(vencimento_date, datetime.date):
+            vencimento_str = vencimento_date.strftime('%d/%m/%Y')
+        elif isinstance(vencimento_date, pd.Timestamp):
+            vencimento_str = vencimento_date.date().strftime('%d/%m/%Y')
+        elif isinstance(vencimento_date, str):
+             # Tenta tratar strings (embora o data_editor deva converter)
+            try:
+                vencimento_str = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date().strftime('%d/%m/%Y')
+            except:
+                pass
+            
+        # 4. Formata Valor (mantendo o R$ no formato final)
+        # O brl já retorna R$ X.XXX,XX. Removemos o R$ e o adicionamos na linha
+        valor_str = brl(valor).replace("R$ ", "") 
+
+        # 5. Constrói a linha: {nome do emissor} - {código/ticker} - {taxa} - {vencimento} - {valor} - {código_cliente}
+        line = f"{emissor} - {ticker} - {taxa_str} - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
+        
+        message += line + "\n"
+
+    # 6. Adiciona o fechamento
+    message += "\nObrigado!"
+    
+    return message
+
+
 # ===================== BOTÃO PDF =====================
-# ALTERADO: Label e nome do arquivo
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     # VALIDAÇÃO MANUAL PARA O CAMPO OBRIGATÓRIO
     if not nome_assessor:
@@ -702,6 +752,24 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 else:
                     # Em caso de erro desconhecido, mostra a mensagem genérica
                     st.error(f"Ocorreu um erro inesperado ao gerar o PDF. Por favor, tente novamente. Detalhe técnico: {e}")
+
+# ===================== MENSAGEM AUTOMÁTICA DE EXECUÇÃO =====================
+st.markdown("---")
+st.subheader("Mensagem Automática para Execução", divider='gray')
+
+if papeis_para_grafico:
+    # Gera a mensagem formatada
+    execution_message = generate_execution_message(papeis_para_grafico, codigo_cliente)
+    
+    st.text_area(
+        "Copie e envie esta mensagem para a mesa de operações:",
+        execution_message,
+        height=250,
+        key="execution_message_area"
+    )
+    
+else:
+    st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
