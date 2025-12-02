@@ -29,7 +29,7 @@ except locale.Error:
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS E CORES =====================
 st.markdown("""
 <style>
-/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 50% da largura da tela (AJUSTE SOLICITADO) */
+/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 70% da largura da tela (AJUSTE CONFIRMADO) */
 .main .block-container {
     max-width: 70% !important; 
     padding-left: 2rem;
@@ -47,7 +47,7 @@ st.markdown("""
 
 /* NOVO: Força o botão primário (tipo="primary") para o verde desejado (#2E8B57) */
 div.stButton > button[data-testid="baseButton-primary"] {
-    background-color: #2E8B57 !important;
+    background-color: #2E8B57;
     border-color: #2E8B57;
     color: white !important;
 }
@@ -92,7 +92,7 @@ brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", 
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ===================== CÁLCULO CORRIGIDO PARA UM ÚNICO PAPEL =====================
-
+# ... (Função calcular_papel não alterada) ...
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
     data_vencimento = papel['Data Vencimento']
@@ -184,6 +184,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     }
 
     return resultado, None
+# ... (Fim da função calcular_papel) ...
 
 # ===================== SESSION STATE =====================
 if 'papeis' not in st.session_state:
@@ -205,15 +206,27 @@ st.markdown("---")
 
 # ===================== DADOS GERAIS DA SIMULAÇÃO =====================
 st.subheader("Dados Gerais da Simulação", divider='gray')
-c1, c2 = st.columns(2)
 
-with c1:
+# NOVO LAYOUT DE 3 COLUNAS PARA NOME, CÓDIGO E ASSESSOR
+col_nome, col_cod, col_assessor = st.columns(3)
+
+with col_nome:
     nome_cliente = st.text_input("Nome do Cliente", "João Silva")
+
+with col_cod:
+    # NOVO CAMPO: Código do Cliente
+    codigo_cliente = st.text_input("Código do Cliente", "")
+
+with col_assessor:
+    nome_assessor = st.text_input("Nome do Assessor", "")
+
+# LAYOUT DE 2 COLUNAS PARA DATAS
+col_data_sim, col_data_app = st.columns(2)
+
+with col_data_sim:
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
 
-with c2:
-    # CORREÇÃO DO ERRO: Removido required=True para evitar TypeError
-    nome_assessor = st.text_input("Nome do Assessor", "")
+with col_data_app:
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
 st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral')
@@ -221,7 +234,7 @@ st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_be
 st.markdown("---")
 
 # ===================== TABELA DE PAPÉIS ADICIONADOS (Inclusão, Edição e Remoção pela Tabela) =====================
-
+# ... (O restante da seção da tabela de papéis não foi alterado) ...
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
 # Prepara o DataFrame para o editor
@@ -320,6 +333,7 @@ st.markdown("---")
 
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
+# ... (Seção de cálculos não alterada) ...
 
 if not st.session_state.papeis:
     st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
@@ -371,6 +385,7 @@ st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DEST
 st.markdown("---")
 
 # ===================== PDF GERAÇÃO (COM GRÁFICO E NOVA TABELA DE DETALHE) =====================
+# ... (Função grafico_png não alterada) ...
 def grafico_png():
     # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
     df_pdf = pd.DataFrame(papeis_para_grafico)
@@ -448,6 +463,7 @@ def grafico_png():
     plt.close(fig_pdf) # Fechas a figura para não poluir o Streamlit
     
     return buf
+# ... (Fim da função grafico_png) ...
 
 def criar_pdf_secundarios():
     # Verifica se há papéis para evitar erros no PDF
@@ -478,12 +494,16 @@ def criar_pdf_secundarios():
     story.append(Spacer(1, 3*mm))
     story.append(logo)
     story.append(Spacer(1, 3*mm))
+    
+    # AJUSTE SOLICITADO: Novo Título do PDF
     story.append(Paragraph("Simulação Consolidada - Renda Fixa FGC", styles['TitlePDF']))
     story.append(Paragraph("Projeção de Retorno com Múltiplos Emissores", getSampleStyleSheet()['Normal']))
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm))
 
     # 2. Dados Gerais
     story.append(Paragraph("DADOS DA SIMULAÇÃO", styles['SectionTitle']))
+    
+    # Código do Cliente NÃO é incluído no PDF
     data_geral = [
         [Paragraph("Cliente", styles['DataLabel']), Paragraph(nome_cliente, styles['DataValue']),
          Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(data_aplicacao.strftime('%d/%m/%Y'), styles['DataValue'])],
@@ -661,7 +681,7 @@ def criar_pdf_secundarios():
     return buffer.getvalue()
 
 # ===================== BOTÃO PDF =====================
-# ALTERADO: Label do botão
+# ALTERADO: Label e nome do arquivo
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     # VALIDAÇÃO MANUAL PARA O CAMPO OBRIGATÓRIO
     if not nome_assessor:
@@ -671,7 +691,8 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
             try:
                 pdf_data = criar_pdf_secundarios()
                 b64 = base64.b64encode(pdf_data).decode()
-                nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
+                # AJUSTE: Novo nome do arquivo PDF
+                nome_arq = f"Proposta_RendaFixa_{nome_cliente.replace(' ', '_')}.pdf"
                 # O texto interno do link de download permanece como "BAIXAR" para indicar a ação subsequente
                 href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
                 st.markdown(href, unsafe_allow_html=True)
