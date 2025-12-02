@@ -29,7 +29,7 @@ except locale.Error:
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS E CORES =====================
 st.markdown("""
 <style>
-/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 70% da largura da tela (AJUSTE CONFIRMADO) */
+/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 70% da largura da tela */
 .main .block-container {
     max-width: 70% !important; 
     padding-left: 2rem;
@@ -45,7 +45,7 @@ st.markdown("""
     height: auto;
 }
 
-/* NOVO: Força o botão primário (tipo="primary") para o verde desejado (#2E8B57) */
+/* Força o botão primário (tipo="primary") para o verde desejado (#2E8B57) */
 div.stButton > button[data-testid="baseButton-primary"] {
     background-color: #2E8B57;
     border-color: #2E8B57;
@@ -71,6 +71,15 @@ AZUL_TABELA_PDF = colors.HexColor("#864df4")
 COR_PRIMARIA_FORM = VERDE_DESTAQUE 
 TAXA_CDI_MERCADO = 14.90
 
+# Lista de Assessores para o Selectbox
+ASSESSORES_LISTA = [
+    "Selecione um Assessor...", # Opção inicial para validação
+    "Tiago Sampaio",
+    "Bruno Nunes",
+    "Luan Su Iye",
+    "Pedro Matos"
+]
+
 # ===================== FUNÇÕES AUXILIARES =====================
 
 def carregar_logo():
@@ -81,7 +90,7 @@ def carregar_logo():
     largura, altura = img_pil.size
     proporcao = altura / largura
     
-    # AJUSTE: Aumentar largura desejada para o logo no PDF (80mm)
+    # Aumentar largura desejada para o logo no PDF (80mm)
     largura_desejada = 80 * mm
     
     altura_calculada = largura_desejada * proporcao
@@ -91,7 +100,7 @@ def carregar_logo():
 brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# ===================== CÁLCULO CORRIGIDO PARA UM ÚNICO PAPEL =====================
+# ===================== CÁLCULO FINANCEIRO =====================
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
     data_vencimento = papel['Data Vencimento']
@@ -122,16 +131,14 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     # --- 2. TAXA REAL ---
     taxa_anual_real = taxa_input
     if tipo == "Pós-fixado (% do CDI)":
-        # Converte para taxa anual real em porcentagem (Ex: 122% do CDI * 14.90% = 18.178%)
+        # Converte para taxa anual real em porcentagem
         taxa_anual_real = taxa_cdi_benchmark * (taxa_input / 100)
     
     # Converte taxa anual (%) para fator diário
-    # Fórmula: (1 + TaxaAnual/100)^(1/360) - 1
     taxa_diaria = (1 + taxa_anual_real/100)**(1/dias_ano) - 1
 
     
     # --- 3. CÁLCULO BRUTO ---
-    # Juros Compostos: Montante = Valor * (1 + TaxaDiária)^PrazoDias
     montante_bruto = valor_investido * (1 + taxa_diaria)**prazo_dias
     rendimento_bruto = montante_bruto - valor_investido
 
@@ -144,26 +151,22 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
                  0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
         
-        # O IOF é aplicado do 1º ao 29º dia. Prazo - 1 para obter o índice (0 a 28)
+        # O IOF é aplicado do 1º ao 29º dia.
         idx = prazo_dias - 1
         aliquota_iof = iof_tab[idx]
         
-        # IOF é aplicado sobre o Rendimento Bruto
         imposto_iof = rendimento_bruto * aliquota_iof
         rendimento_apos_iof = rendimento_bruto - imposto_iof
 
     # --- 5. CÁLCULO IR ---
     # Alíquota IR (Tabela Regressiva)
-    # Correto: 180 dias ou menos (22.5), 181 a 360 (20.0), 361 a 720 (17.5), acima de 720 (15.0)
     aliquota_ir = 22.5 if prazo_dias <= 180 else 20.0 if prazo_dias <= 360 else 17.5 if prazo_dias <= 720 else 15.0
     
-    # IR é aplicado sobre o Rendimento após o IOF
     imposto_ir = rendimento_apos_iof * (aliquota_ir/100)
     
     # --- 6. RESULTADO FINAL ---
     total_impostos = imposto_iof + imposto_ir
     
-    # O montante líquido é o Investido + Rendimento após IOF - IR
     montante_liquido = valor_investido + rendimento_apos_iof - imposto_ir
     rendimento_liquido = montante_liquido - valor_investido
     
@@ -184,6 +187,57 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 
     return resultado, None
 # ... (Fim da função calcular_papel) ...
+
+# ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
+
+def generate_execution_message(papeis, codigo_cliente):
+    """Gera a mensagem formatada para a mesa de operações."""
+    
+    message = "Solicito seguir com a aplicação com os detalhes abaixo:\n\n"
+    
+    for p in papeis:
+        # 1. Recupera dados do papel
+        emissor = p.get('Emissor', 'N/A')
+        ticker = p.get('Ticker', 'N/A')
+        # Prioriza o Valor Investido do cálculo se existir
+        valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
+        taxa_input = p.get('Taxa', 0.0)
+        tipo = p.get('Tipo', 'Pré-fixado')
+        vencimento_date = p.get('Data Vencimento')
+
+        # 2. Formata Taxa
+        if tipo == 'Pré-fixado':
+            taxa_str = f"{taxa_input:.2f}% a.a."
+        elif tipo == 'Pós-fixado (% do CDI)':
+            taxa_str = f"{taxa_input:.2f}% do CDI"
+        else:
+            taxa_str = f"{taxa_input:.2f}%"
+
+        # 3. Formata Vencimento
+        vencimento_str = 'N/A'
+        if isinstance(vencimento_date, datetime.date):
+            vencimento_str = vencimento_date.strftime('%d/%m/%Y')
+        elif isinstance(vencimento_date, pd.Timestamp):
+            vencimento_str = vencimento_date.date().strftime('%d/%m/%Y')
+        elif isinstance(vencimento_date, str):
+            try:
+                vencimento_str = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date().strftime('%d/%m/%Y')
+            except:
+                pass
+            
+        # 4. Formata Valor
+        valor_str = brl(valor).replace("R$ ", "") 
+
+        # 5. Constrói a linha: {nome do emissor} - {código/ticker} - {taxa} - {vencimento} - {valor} - {código_cliente}
+        line = f"{emissor} - {ticker} - {taxa_str} - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
+        
+        message += line + "\n"
+
+    # 6. Adiciona o fechamento
+    message += "\nObrigado!"
+    
+    return message
+
 
 # ===================== SESSION STATE =====================
 if 'papeis' not in st.session_state:
@@ -216,7 +270,13 @@ with col_cod:
     codigo_cliente = st.text_input("Código do Cliente", "")
 
 with col_assessor:
-    nome_assessor = st.text_input("Nome do Assessor", "")
+    # --- ALTERAÇÃO SOLICITADA: st.selectbox para Assessores ---
+    nome_assessor = st.selectbox(
+        "Nome do Assessor (Obrigatório)", 
+        options=ASSESSORES_LISTA,
+        index=0 # Começa na opção de seleção
+    )
+    # --- FIM DA ALTERAÇÃO ---
 
 # LINHA 2: Data da Simulação, Data de Aplicação, Taxa CDI Anual (Benchmark)
 col_data_sim, col_data_app, col_cdi = st.columns(3)
@@ -238,12 +298,10 @@ st.subheader("Papéis Incluídos para Simulação", divider='gray')
 # Prepara o DataFrame para o editor
 if st.session_state.papeis:
     df_papeis = pd.DataFrame(st.session_state.papeis)
-    # Garante que Data Vencimento é um objeto date, importante para o data_editor
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
-    # Cria um DataFrame vazio com as colunas esperadas para permitir a adição de novas linhas
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
 
 
@@ -323,7 +381,7 @@ def clear_papeis():
     st.session_state.papeis = []
     st.rerun()
 
-# Botão Limpar (ALTERADO: Removendo 'type="primary"' para usar estilo padrão)
+# Botão Limpar 
 if st.button("Limpar Todos os Papéis", use_container_width=True):
     clear_papeis()
     
@@ -338,7 +396,6 @@ if not st.session_state.papeis:
 resultados_calculados = []
 papeis_para_grafico = []
 
-# Garante que as variáveis de estado são atualizadas para a função de cálculo
 current_cdi_benchmark = st.session_state.cdi_benchmark_geral
 
 for papel in st.session_state.papeis:
@@ -380,29 +437,20 @@ st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}
 st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ===================== PDF GERAÇÃO (Funções de PDF e Gráfico não alteradas) =====================
+# ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
 def grafico_png():
     # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
     df_pdf = pd.DataFrame(papeis_para_grafico)
-    
-    # Garantir que a coluna de data é datetime e formatar para o agrupamento
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
     df_pdf = df_pdf.dropna(subset=['Data Vencimento'])
-    
-    # Criar a coluna de agrupamento (Mês/Ano)
     df_pdf['Vencimento Formatado'] = df_pdf['Data Vencimento'].dt.strftime('%m/%Y')
     
-    # Agrupar e somar o valor investido
     df_timeline = df_pdf.groupby('Vencimento Formatado')['Valor Investido'].sum().reset_index()
-    
-    # Ordenar corretamente pelo ano e mês para exibição na timeline
     df_timeline['Data Ordenacao'] = pd.to_datetime(df_timeline['Vencimento Formatado'], format='%m/%Y')
     df_timeline = df_timeline.sort_values(by='Data Ordenacao').drop(columns=['Data Ordenacao'])
     
-    # Gera o Gráfico de Barras Horizontal (Timeline de Liquidez)
     fig_pdf, ax_pdf = plt.subplots(figsize=(10, 5))
     
-    # 1. Plotar o gráfico e capturar os elementos do barh (bar_container)
     bar_container = ax_pdf.barh(
         df_timeline['Vencimento Formatado'],
         df_timeline['Valor Investido'],
@@ -411,36 +459,27 @@ def grafico_png():
     )
     
     ax_pdf.set_title("Timeline de Liquidez: Valor Investido por Vencimento (Mês/Ano)", fontsize=14, color='black')
-    
-    # AJUSTE 1: Remover o rótulo do eixo X, pois o valor estará nas barras
     ax_pdf.set_xlabel("")
-    
-    # AJUSTE 2: Garantir que o rótulo do eixo Y é a data (Mês/Ano)
     ax_pdf.set_ylabel("Vencimento", fontsize=12, color='black')
     
-    # AJUSTE 3: Adicionar os valores (R$) como rótulos de dados (Data Labels)
     for bar in bar_container:
-        width = bar.get_width() # O valor do eixo X (Valor Investido)
-        # Formatar o valor para R$
+        width = bar.get_width()
         valor_formatado = f'R$ {width:,.0f}'.replace(",", "X").replace(".", ",").replace("X", ".")
         
-        # Adicionar o rótulo de dados (Data Label)
         ax_pdf.text(
-            width, # Posição X: na ponta da barra
-            bar.get_y() + bar.get_height()/2, # Posição Y: centro da barra
-            '  ' + valor_formatado, # Adicionar um pequeno espaço
-            va='center', # Alinhamento vertical no centro
-            ha='left', # Alinhamento horizontal à esquerda (fora da barra)
+            width, 
+            bar.get_y() + bar.get_height()/2, 
+            '  ' + valor_formatado, 
+            va='center', 
+            ha='left', 
             fontsize=9,
             color='black',
             fontweight='bold'
         )
 
-    # Melhorar a visualização: Ajustar o limite do eixo X para acomodar os Data Labels
     max_value = df_timeline['Valor Investido'].max()
-    ax_pdf.set_xlim(right=max_value * 1.20) # Aumenta o limite do eixo X em 20%
+    ax_pdf.set_xlim(right=max_value * 1.20)
     
-    # Ocultar os ticks e labels do eixo X (já que o valor está nas barras)
     ax_pdf.xaxis.set_major_formatter(mticker.NullFormatter())
     ax_pdf.tick_params(axis='x', length=0)
     
@@ -451,11 +490,10 @@ def grafico_png():
     ax_pdf.set_facecolor('white')
     plt.tight_layout()
 
-    # Salvar em buffer PNG
     buf = BytesIO()
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
     buf.seek(0)
-    plt.close(fig_pdf) # Fechas a figura para não poluir o Streamlit
+    plt.close(fig_pdf)
     
     return buf
 
@@ -468,7 +506,7 @@ def criar_pdf_secundarios():
     story = []
     styles = getSampleStyleSheet()
     
-    # Estilos ajustados para padronização
+    # Estilos
     styles.add(ParagraphStyle(name='TitlePDF', fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=5*mm, textColor=colors.HexColor('#000000')))
     styles.add(ParagraphStyle(name='SectionTitle', fontSize=10, fontName='Helvetica-Bold', spaceBefore=5*mm, spaceAfter=3*mm, textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='DataLabel', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#666666'), alignment=0))
@@ -483,12 +521,10 @@ def criar_pdf_secundarios():
     # 1. Cabeçalho
     logo = carregar_logo()
     logo.hAlign = 'CENTER'
-    # Espaçamento entre o Logo e o Título
     story.append(Spacer(1, 3*mm))
     story.append(logo)
     story.append(Spacer(1, 3*mm))
     
-    # AJUSTE SOLICITADO: Novo Título do PDF
     story.append(Paragraph("Simulação Consolidada - Renda Fixa FGC", styles['TitlePDF']))
     story.append(Paragraph("Projeção de Retorno com Múltiplos Emissores", getSampleStyleSheet()['Normal']))
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm))
@@ -496,7 +532,6 @@ def criar_pdf_secundarios():
     # 2. Dados Gerais
     story.append(Paragraph("DADOS DA SIMULAÇÃO", styles['SectionTitle']))
     
-    # Código do Cliente NÃO é incluído no PDF
     data_geral = [
         [Paragraph("Cliente", styles['DataLabel']), Paragraph(nome_cliente, styles['DataValue']),
          Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(data_aplicacao.strftime('%d/%m/%Y'), styles['DataValue'])],
@@ -521,23 +556,19 @@ def criar_pdf_secundarios():
         if isinstance(vencimento_date, pd.Timestamp):
             vencimento_date = vencimento_date.date()
         elif isinstance(vencimento_date, str):
-            # Tratar caso de string que passou do data_editor
             try:
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
-                vencimento_date = datetime.date.today() # fallback
+                vencimento_date = datetime.date.today() 
         
-        # AJUSTE: Mostrar apenas "Pós-fixado"
         tipo_taxa_display = "Pós-fixado" if p['Tipo'] == 'Pós-fixado (% do CDI)' else p['Tipo']
-        
-        # CORREÇÃO DE ERRO DE SINTAXE: Expressão ternária completa
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         
         data_tabela_papeis.append([
             Paragraph(p['Emissor'], styles['TableCellPDF']),
             Paragraph(p['Ticker'], styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Valor Investido']), styles['TableCellPDF']),
-            Paragraph(tipo_taxa_display, styles['TableCellPDF']), # Usando o tipo ajustado
+            Paragraph(tipo_taxa_display, styles['TableCellPDF']), 
             Paragraph(taxa_str, styles['TableCellPDF']),
             Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Rendimento Líquido']), styles['TableCellPDF']),
@@ -673,84 +704,28 @@ def criar_pdf_secundarios():
     buffer.seek(0)
     return buffer.getvalue()
 
-# ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
 
-def generate_execution_message(papeis, codigo_cliente):
-    """Gera a mensagem formatada para a mesa de operações."""
-    
-    message = "Solicito seguir com a aplicação com os detalhes abaixo:\n\n"
-    
-    for p in papeis:
-        # 1. Recupera dados do papel
-        emissor = p.get('Emissor', 'N/A')
-        ticker = p.get('Ticker', 'N/A')
-        # Garantindo que p['Valor Investido'] existe após o cálculo
-        valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
-        taxa_input = p.get('Taxa', 0.0)
-        tipo = p.get('Tipo', 'Pré-fixado')
-        vencimento_date = p.get('Data Vencimento')
-
-        # 2. Formata Taxa
-        if tipo == 'Pré-fixado':
-            taxa_str = f"{taxa_input:.2f}% a.a."
-        elif tipo == 'Pós-fixado (% do CDI)':
-            taxa_str = f"{taxa_input:.2f}% do CDI"
-        else:
-            taxa_str = f"{taxa_input:.2f}%"
-
-        # 3. Formata Vencimento
-        vencimento_str = 'N/A'
-        if isinstance(vencimento_date, datetime.date):
-            vencimento_str = vencimento_date.strftime('%d/%m/%Y')
-        elif isinstance(vencimento_date, pd.Timestamp):
-            vencimento_str = vencimento_date.date().strftime('%d/%m/%Y')
-        elif isinstance(vencimento_date, str):
-             # Tenta tratar strings (embora o data_editor deva converter)
-            try:
-                vencimento_str = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date().strftime('%d/%m/%Y')
-            except:
-                pass
-            
-        # 4. Formata Valor (mantendo o R$ no formato final)
-        # O brl já retorna R$ X.XXX,XX. Removemos o R$ e o adicionamos na linha
-        valor_str = brl(valor).replace("R$ ", "") 
-
-        # 5. Constrói a linha: {nome do emissor} - {código/ticker} - {taxa} - {vencimento} - {valor} - {código_cliente}
-        line = f"{emissor} - {ticker} - {taxa_str} - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
-        
-        message += line + "\n"
-
-    # 6. Adiciona o fechamento
-    message += "\nObrigado!"
-    
-    return message
-
-
-# ===================== BOTÃO PDF =====================
+# ===================== BOTÃO PDF (Com validação do Assessor) =====================
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
-    # VALIDAÇÃO MANUAL PARA O CAMPO OBRIGATÓRIO
-    if not nome_assessor:
-        st.error("O campo 'Nome do Assessor' é obrigatório. Por favor, preencha para gerar a proposta.")
+    # VALIDAÇÃO DO CAMPO OBRIGATÓRIO (Nome do Assessor)
+    if nome_assessor == "Selecione um Assessor...":
+        st.error("O campo **Nome do Assessor** é obrigatório. Por favor, selecione um nome na lista para gerar a proposta.")
     else:
         with st.spinner("Gerando sua proposta premium consolidada..."):
             try:
                 pdf_data = criar_pdf_secundarios()
                 b64 = base64.b64encode(pdf_data).decode()
-                # AJUSTE: Novo nome do arquivo PDF
                 nome_arq = f"Proposta_RendaFixa_{nome_cliente.replace(' ', '_')}.pdf"
-                # O texto interno do link de download permanece como "BAIXAR" para indicar a ação subsequente
                 href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
                 st.markdown(href, unsafe_allow_html=True)
                 st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
             except Exception as e:
-                # Caso o erro seja do tipo "Não há papéis válidos..." o erro será mais amigável
                 if "papéis válidos" in str(e):
                     st.error("Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido na tabela (Valor > R$0, Taxa > 0% e Vencimento futuro).")
                 else:
-                    # Em caso de erro desconhecido, mostra a mensagem genérica
                     st.error(f"Ocorreu um erro inesperado ao gerar o PDF. Por favor, tente novamente. Detalhe técnico: {e}")
 
-# ===================== MENSAGEM AUTOMÁTICA DE EXECUÇÃO =====================
+# ===================== MENSAGEM AUTOMÁTICA DE EXECUÇÃO (Com botão de cópia) =====================
 st.markdown("---")
 st.subheader("Mensagem Automática para Execução", divider='gray')
 
@@ -758,10 +733,10 @@ if papeis_para_grafico:
     # Gera a mensagem formatada
     execution_message = generate_execution_message(papeis_para_grafico, codigo_cliente)
     
-    # Substituído st.text_area por st.code para ter o botão de cópia nativo
+    # st.code fornece o botão de cópia nativo
     st.code(
         execution_message,
-        language='markdown' # Usando 'markdown' ou outro não-Python para não destacar sintaxe
+        language='markdown'
     )
     st.caption("Utilize o ícone **Copy** no canto superior direito para copiar a mensagem.")
     
@@ -770,6 +745,6 @@ else:
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
-    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor if nome_assessor else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
+    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor if nome_assessor != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
     unsafe_allow_html=True
 )
