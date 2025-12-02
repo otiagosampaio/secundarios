@@ -27,7 +27,8 @@ except locale.Error:
         pass # Ignora se não conseguir configurar
 
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS E CORES =====================
-st.markdown("""
+# AJUSTES DE CSS PARA CORES DOS BOTÕES INCORPORADOS
+css_style = """
 <style>
 /* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 60% da largura da tela */
 .main .block-container {
@@ -45,20 +46,39 @@ st.markdown("""
     height: auto;
 }
 
-/* NOVO: Força o botão primário (tipo="primary") para o verde desejado (#2E8B57) */
-div.stButton > button[data-testid="baseButton-primary"] {
-    background-color: #2E8B57;
-    border-color: #2E8B57;
-    color: white !important;
+/* NOVO: Estilização para o botão 'Limpar Todos os Papéis' (VERMELHO) */
+#limpar-papeis button {
+    background-color: #f44336; /* Vermelho */
+    color: white !important; /* Texto branco */
+    border: 1px solid #f44336;
+    font-weight: bold;
+}
+#limpar-papeis button:hover {
+    background-color: #E53935; /* Vermelho mais escuro no hover */
+    border: 1px solid #E53935;
 }
 
-div.stButton > button[data-testid="baseButton-primary"]:hover {
-    background-color: #3C9F68; /* Um tom mais claro no hover */
-    border-color: #3C9F68;
+
+/* NOVO: Estilização para o botão 'Gerar Proposta Consolidada' (VERDE) */
+#gerar-proposta button {
+    background-color: #4CAF50; /* Verde */
+    color: white !important; /* Texto branco */
+    border: 1px solid #4CAF50;
+    font-weight: bold;
+    width: 100%; /* Mantém a largura cheia */
 }
+#gerar-proposta button:hover {
+    background-color: #43A047; /* Verde mais escuro no hover */
+    border: 1px solid #43A047;
+}
+
+/* Removido o seletor genérico baseButton-primary para evitar conflito com o Gerar Proposta, 
+   já que agora usamos um ID específico para a cor verde */
 
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(css_style, unsafe_allow_html=True)
+
 
 # ===================== CONFIGURAÇÃO INICIAL E CONSTANTES =====================
 st.set_page_config(page_title="Traders Secundários - Calculadora", layout="wide")
@@ -141,7 +161,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     if prazo_dias < 30:
         # Tabela IOF regressiva para os 29 dias (em porcentagem/100)
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
-                     0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
+                      0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
         
         # O IOF é aplicado do 1º ao 29º dia. Prazo - 1 para obter o índice (0 a 28)
         idx = prazo_dias - 1
@@ -310,9 +330,11 @@ def clear_papeis():
     st.session_state.papeis = []
     st.rerun()
 
-# Botão Limpar (ALTERADO: Removendo 'type="primary"' para usar estilo padrão)
-if st.button("Limpar Todos os Papéis", use_container_width=True):
+# Botão Limpar Todos os Papéis (AJUSTADO: Envolvido com o ID para ser VERMELHO)
+st.markdown('<div id="limpar-papeis">', unsafe_allow_html=True)
+if st.button("Limpar Todos os Papéis", key="btn_limpar_papeis", use_container_width=True):
     clear_papeis()
+st.markdown('</div>', unsafe_allow_html=True)
     
 st.markdown("---")
 
@@ -659,8 +681,9 @@ def criar_pdf_secundarios():
     return buffer.getvalue()
 
 # ===================== BOTÃO PDF =====================
-# ALTERADO: Label do botão
-if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
+# AJUSTADO: Envolvido com o ID para ser VERDE
+st.markdown('<div id="gerar-proposta">', unsafe_allow_html=True)
+if st.button("GERAR PROPOSTA CONSOLIDADA", key="btn_gerar_proposta", use_container_width=True):
     # VALIDAÇÃO MANUAL PARA O CAMPO OBRIGATÓRIO
     if not nome_assessor:
         st.error("O campo 'Nome do Assessor' é obrigatório. Por favor, preencha para gerar a proposta.")
@@ -671,19 +694,11 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 b64 = base64.b64encode(pdf_data).decode()
                 nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
                 # O texto interno do link de download permanece como "BAIXAR" para indicar a ação subsequente
-                href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
+                href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA (PDF)</h3></a>'
                 st.markdown(href, unsafe_allow_html=True)
-                st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
+                st.balloons()
+            except ValueError as e:
+                st.error(f"Erro ao gerar a proposta: {e}")
             except Exception as e:
-                # Caso o erro seja do tipo "Não há papéis válidos..." o erro será mais amigável
-                if "papéis válidos" in str(e):
-                    st.error("Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido na tabela (Valor > R$0, Taxa > 0% e Vencimento futuro).")
-                else:
-                    # Em caso de erro desconhecido, mostra a mensagem genérica
-                    st.error(f"Ocorreu um erro inesperado ao gerar o PDF. Por favor, tente novamente. Detalhe técnico: {e}")
-
-# ===================== RODAPÉ STREAMLIT =====================
-st.markdown(
-    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor if nome_assessor else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
-    unsafe_allow_html=True
-)
+                st.error(f"Ocorreu um erro inesperado na geração do PDF: {e}")
+st.markdown('</div>', unsafe_allow_html=True)
