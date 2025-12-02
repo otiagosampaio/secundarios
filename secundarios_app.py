@@ -107,16 +107,12 @@ def carregar_logo():
 brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def adicionar_ao_historico(nome_assessor, data_simulacao, total_investido):
-    """Adiciona a proposta recém-criada ao histórico de sessões."""
-    if nome_assessor != "Selecione um Assessor...":
-        st.session_state['historico_propostas'].append({
-            'Assessor': nome_assessor,
-            'Data Simulação': data_simulacao,
-            'Valor Investido': total_investido
-        })
-        
+def adicionar_ao_historico(data_to_save):
+    """Adiciona a proposta completa ao histórico de sessões."""
+    st.session_state['historico_propostas'].append(data_to_save)
+
 # ===================== CÁLCULO FINANCEIRO =====================
+# A função calcular_papel permanece inalterada
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
     data_vencimento = papel['Data Vencimento']
@@ -204,20 +200,22 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     return resultado, None
 # ... (Fim da função calcular_papel) ...
 
-# ===================== FUNÇÕES PARA SALVAR SIMULAÇÃO (NOVO) =====================
+# ===================== FUNÇÕES PARA SALVAR E CARREGAR SIMULAÇÃO =====================
 def calcular_totais_para_salvar(papeis_list, data_aplicacao, cdi_benchmark):
     """Calcula o total investido e a contagem de papéis válidos a partir de uma lista de papéis."""
     total_investido = 0.0
     valid_papers_count = 0
-    for papel in papeis_list:
+    # Copia a lista para evitar modificar st.session_state.papeis durante a iteração de cálculo
+    papeis_copy = [p.copy() for p in papeis_list] 
+    
+    for papel in papeis_copy:
         try:
             # Garante que os valores são floats antes de passar para a função de cálculo
-            papel_temp = papel.copy()
-            papel_temp['Valor'] = float(papel_temp['Valor'])
-            papel_temp['Taxa'] = float(papel_temp['Taxa'])
+            papel['Valor'] = float(papel['Valor'])
+            papel['Taxa'] = float(papel['Taxa'])
             
             # Re-executa o cálculo do papel
-            resultado, _ = calcular_papel(papel_temp, data_aplicacao, cdi_benchmark)
+            resultado, _ = calcular_papel(papel, data_aplicacao, cdi_benchmark)
             if resultado:
                 total_investido += resultado['Valor Investido']
                 valid_papers_count += 1
@@ -225,8 +223,8 @@ def calcular_totais_para_salvar(papeis_list, data_aplicacao, cdi_benchmark):
             continue
     return total_investido, valid_papers_count
 
-def handle_save_simulation(nome_cliente, nome_assessor, data_simulacao, papeis_list, data_aplicacao, cdi_benchmark):
-    """Valida e salva a simulação no histórico."""
+def handle_save_simulation(nome_cliente, codigo_cliente, nome_assessor, data_simulacao, papeis_list, data_aplicacao, cdi_benchmark):
+    """Valida e salva a simulação completa no histórico."""
     
     total_investido, valid_papers_count = calcular_totais_para_salvar(papeis_list, data_aplicacao, cdi_benchmark)
     
@@ -238,19 +236,48 @@ def handle_save_simulation(nome_cliente, nome_assessor, data_simulacao, papeis_l
         st.error("A simulação deve ter pelo menos um papel válido (Valor > R$0, Taxa > 0% e Vencimento futuro) para ser salva.")
         return False
         
-    # Salvar a simulação usando o total investido calculado
-    if nome_assessor != "Selecione um Assessor...":
-        # Usamos a função auxiliar
-        adicionar_ao_historico(nome_assessor, data_simulacao, total_investido)
-        
-        st.success(f"Simulação do cliente **{nome_cliente}** (Volume: {brl(total_investido)}) salva com sucesso! O dashboard na barra lateral será atualizado.")
-        
-        # O rerun é importante para atualizar o dashboard da sidebar
-        st.rerun() 
-        return True
-    return False
-# ===================== FIM FUNÇÕES PARA SALVAR SIMULAÇÃO =====================
+    if not codigo_cliente or len(codigo_cliente.strip()) < 3:
+        st.error("O campo **Código do Cliente** é obrigatório e precisa ter pelo menos 3 caracteres para salvar a simulação.")
+        return False
 
+    # Salvar a simulação completa
+    data_to_save = {
+        'Cliente': nome_cliente,
+        'Codigo Cliente': codigo_cliente,
+        'Assessor': nome_assessor,
+        'Data Simulação': data_simulacao,
+        'Data Aplicacao': data_aplicacao,
+        'CDI Benchmark': cdi_benchmark,
+        'Valor Investido': total_investido,
+        # Salva a lista completa de papéis para posterior resgate
+        'Papeis Salvos': [p.copy() for p in papeis_list] # Copia defensiva
+    }
+
+    adicionar_ao_historico(data_to_save)
+    
+    st.success(f"Simulação do cliente **{nome_cliente}** (Volume: {brl(total_investido)}) salva com sucesso! O dashboard na barra lateral será atualizado.")
+    st.rerun() 
+    return True
+
+def load_simulation(proposal_data):
+    """Loads a saved simulation into the main application form."""
+    
+    # 1. Update main data fields using their keys
+    st.session_state['nome_cliente'] = proposal_data['Cliente']
+    st.session_state['codigo_cliente'] = proposal_data['Codigo Cliente']
+    st.session_state['nome_assessor_selected_key'] = proposal_data['Assessor'] # Seleciona o valor no selectbox
+    st.session_state['data_simulacao'] = proposal_data['Data Simulação']
+    st.session_state['data_aplicacao'] = proposal_data['Data Aplicacao']
+    st.session_state['cdi_benchmark_geral'] = proposal_data['CDI Benchmark']
+    
+    # 2. Update the papers table
+    # A cópia defensiva garante que a lista original de 'Papeis Salvos' não seja alterada
+    st.session_state['papeis'] = [p.copy() for p in proposal_data['Papeis Salvos']] 
+    
+    st.success(f"Simulação de **{proposal_data['Cliente']}** (Proposta de {proposal_data['Data Simulação'].strftime('%d/%m/%Y')}) carregada com sucesso! Atualize os dados se necessário.")
+    
+    # 3. Forces the UI to redraw with new session state values
+    st.rerun() 
 
 # ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
 
@@ -285,6 +312,7 @@ def generate_execution_message(papeis, codigo_cliente):
             vencimento_str = vencimento_date.date().strftime('%d/%m/%Y')
         elif isinstance(vencimento_date, str):
             try:
+                # Trata o caso da data vir como string no formato 'YYYY-MM-DD'
                 vencimento_str = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date().strftime('%d/%m/%Y')
             except:
                 pass
@@ -305,14 +333,21 @@ def generate_execution_message(papeis, codigo_cliente):
 
 # ===================== SESSION STATE =====================
 if 'papeis' not in st.session_state:
-    # Inicializa com uma lista vazia
     st.session_state['papeis'] = []
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
-# NOVO: Histórico para o dashboard da barra lateral
 if 'historico_propostas' not in st.session_state:
-    # Estrutura: [{'Assessor': 'Tiago Sampaio', 'Data Simulação': date(2025, 12, 1), 'Valor Investido': 150000.00}]
     st.session_state['historico_propostas'] = [] 
+if 'nome_cliente' not in st.session_state:
+    st.session_state['nome_cliente'] = "João Silva"
+if 'codigo_cliente' not in st.session_state:
+    st.session_state['codigo_cliente'] = ""
+if 'nome_assessor_selected_key' not in st.session_state:
+    st.session_state['nome_assessor_selected_key'] = ASSESSORES_LISTA[0]
+if 'data_simulacao' not in st.session_state:
+    st.session_state['data_simulacao'] = datetime.date.today()
+if 'data_aplicacao' not in st.session_state:
+    st.session_state['data_aplicacao'] = datetime.date.today()
     
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
 st.markdown(
@@ -332,32 +367,91 @@ st.subheader("Dados Gerais da Simulação", divider='gray')
 col_nome, col_cod, col_assessor = st.columns(3)
 
 with col_nome:
-    nome_cliente = st.text_input("Nome do Cliente", "João Silva")
+    # Usando key para permitir o carregamento via session state
+    st.text_input("Nome do Cliente", key='nome_cliente')
 
 with col_cod:
-    codigo_cliente = st.text_input("Código do Cliente", "")
+    # Usando key para permitir o carregamento via session state
+    st.text_input("Código do Cliente", key='codigo_cliente')
 
 with col_assessor:
-    # --- ALTERAÇÃO SOLICITADA: st.selectbox para Assessores ---
+    # Usando key e default para permitir o carregamento via session state
     nome_assessor = st.selectbox(
         "Nome do Assessor (Obrigatório)", 
         options=ASSESSORES_LISTA,
-        index=0 # Começa na opção de seleção
+        key='nome_assessor_selected_key' # A key armazena o valor selecionado
     )
-    # --- FIM DA ALTERAÇÃO ---
 
 # LINHA 2: Data da Simulação, Data de Aplicação, Taxa CDI Anual (Benchmark)
 col_data_sim, col_data_app, col_cdi = st.columns(3)
 
 with col_data_sim:
-    data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
+    # Usando key para permitir o carregamento via session state
+    st.date_input("Data da Simulação", key='data_simulacao', format="DD/MM/YYYY")
 
 with col_data_app:
-    data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
+    # Usando key para permitir o carregamento via session state
+    st.date_input("Data de Aplicação/Compra", key='data_aplicacao', format="DD/MM/YYYY")
 
 with col_cdi:
-    st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral')
+    # O CDI já usa uma key geral
+    st.number_input("Taxa CDI Anual (Benchmark) (%)", step=0.05, key='cdi_benchmark_geral')
     
+st.markdown("---")
+
+# ===================== RESGATE DE SIMULAÇÕES SALVAS (NOVO PAINEL) =====================
+st.subheader("Resgate de Simulações Salvas", divider='gray')
+
+if not st.session_state.historico_propostas:
+    st.info("Nenhuma simulação salva ainda. Salve uma simulação com um Código do Cliente para começar a usar este recurso.")
+else:
+    # 1. Barra de Busca
+    search_query = st.text_input("Buscar por Código do Cliente", value="", key='search_client_code')
+    
+    # 2. Filtragem
+    if search_query:
+        df_historico = pd.DataFrame(st.session_state.historico_propostas)
+        
+        # Filtra as propostas cujo "Código Cliente" contenha a query (busca parcial)
+        filtered_proposals = df_historico[
+            df_historico['Codigo Cliente'].str.contains(search_query, case=False, na=False)
+        ]
+        
+        if not filtered_proposals.empty:
+            st.success(f"{len(filtered_proposals)} simulação(ões) encontrada(s) para o código: **{search_query}**")
+            
+            # Ordena e Exibe as propostas
+            filtered_proposals['Data Simulação'] = pd.to_datetime(filtered_proposals['Data Simulação'])
+            filtered_proposals = filtered_proposals.sort_values(by='Data Simulação', ascending=False)
+            
+            # Lista de Propostas (apenas Data, Cliente e Valor)
+            for index, row in filtered_proposals.iterrows():
+                # Encontra o objeto completo da proposta salva (importante para o carregamento)
+                proposal_data = st.session_state.historico_propostas[index] 
+                
+                col_list_data, col_list_valor, col_list_button = st.columns([1.5, 2, 1])
+                
+                with col_list_data:
+                    st.markdown(f"**Data:** {row['Data Simulação'].strftime('%d/%m/%Y')}")
+                
+                with col_list_valor:
+                    st.markdown(f"**Volume:** {brl(row['Valor Investido'])}")
+                    
+                with col_list_button:
+                    # O botão chama a função de carregamento com os dados completos daquela linha
+                    st.button(
+                        "Carregar Proposta", 
+                        key=f"load_btn_{index}", 
+                        on_click=load_simulation, 
+                        args=(proposal_data,),
+                        type='secondary'
+                    )
+                st.markdown("---")
+        else:
+            st.warning(f"Nenhuma simulação encontrada contendo o código: **{search_query}**")
+    else:
+        st.info("Digite o Código do Cliente na barra de busca acima para resgatar simulações salvas.")
+
 st.markdown("---")
 
 # ===================== TABELA DE PAPÉIS ADICIONADOS (Inclusão, Edição e Remoção pela Tabela) =====================
@@ -366,6 +460,7 @@ st.subheader("Papéis Incluídos para Simulação", divider='gray')
 # Prepara o DataFrame para o editor
 if st.session_state.papeis:
     df_papeis = pd.DataFrame(st.session_state.papeis)
+    # Garante que 'Data Vencimento' é um objeto date (para o editor de dados)
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
     df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
     df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
@@ -457,15 +552,16 @@ st.markdown("---")
 
 # ===================== BOTÃO SALVAR SIMULAÇÃO (NOVO) =====================
 st.subheader("Salvar Simulação", divider='gray')
-st.caption("A simulação será armazenada no dashboard lateral, sem gerar o PDF.")
+st.caption("A simulação atual (incluindo dados gerais e papéis) será armazenada no histórico, sem gerar o PDF.")
 
 if st.button("Salvar Simulação", key='save_simulation_btn', use_container_width=True, type='secondary'):
     handle_save_simulation(
-        nome_cliente, 
-        nome_assessor, 
-        data_simulacao, 
+        st.session_state['nome_cliente'], 
+        st.session_state['codigo_cliente'], 
+        st.session_state['nome_assessor_selected_key'], # Nome do Assessor
+        st.session_state['data_simulacao'], 
         st.session_state.papeis, 
-        data_aplicacao, 
+        st.session_state['data_aplicacao'], 
         st.session_state.cdi_benchmark_geral
     )
 st.markdown("---") 
@@ -475,6 +571,7 @@ if not st.session_state.papeis:
     st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
     st.stop()
     
+# O restante da lógica de cálculo é mantida para garantir a exibição dos resultados
 resultados_calculados = []
 papeis_para_grafico = []
 
@@ -482,15 +579,16 @@ current_cdi_benchmark = st.session_state.cdi_benchmark_geral
 
 for papel in st.session_state.papeis:
     try:
-        papel['Valor'] = float(papel['Valor'])
-        papel['Taxa'] = float(papel['Taxa'])
+        papel_temp = papel.copy()
+        papel_temp['Valor'] = float(papel_temp['Valor'])
+        papel_temp['Taxa'] = float(papel_temp['Taxa'])
     except (ValueError, TypeError):
         continue # Ignora papéis com valores não numéricos
         
-    resultado, erro = calcular_papel(papel, data_aplicacao, current_cdi_benchmark)
+    resultado, erro = calcular_papel(papel_temp, st.session_state.data_aplicacao, current_cdi_benchmark)
     if resultado:
-        papel.update(resultado)
-        papeis_para_grafico.append(papel)
+        papel_temp.update(resultado)
+        papeis_para_grafico.append(papel_temp)
         resultados_calculados.append(resultado)
     elif erro:
         st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
@@ -520,9 +618,15 @@ st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DEST
 st.markdown("---")
 
 # ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO (Inalteradas) =====================
+# As funções grafico_png e criar_pdf_secundarios não foram incluídas aqui para brevidade, mas devem
+# permanecer em seu código, inalteradas, utilizando as variáveis globais (que agora são session_state
+# keys) para nome_cliente, data_aplicacao, nome_assessor, etc.
+
+# Funções auxiliares (re-incluídas para garantir que o código seja executável):
 def grafico_png():
-    # ... (código da função grafico_png inalterado) ...
     df_pdf = pd.DataFrame(papeis_para_grafico)
+    # ... (restante do código da função grafico_png)
+    # Crie o gráfico de barras aqui
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
     df_pdf = df_pdf.dropna(subset=['Data Vencimento'])
     df_pdf['Vencimento Formatado'] = df_pdf['Data Vencimento'].dt.strftime('%m/%Y')
@@ -580,7 +684,6 @@ def grafico_png():
     return buf
 
 def criar_pdf_secundarios():
-    # ... (código da função criar_pdf_secundarios inalterado, exceto a chamada do logo) ...
     if not papeis_para_grafico:
         raise ValueError("Não há papéis válidos para gerar a proposta consolidada.")
         
@@ -589,7 +692,7 @@ def criar_pdf_secundarios():
     story = []
     styles = getSampleStyleSheet()
     
-    # Estilos (omitidos para brevidade, são os mesmos)
+    # ... (Definição dos Estilos do PDF) ...
     styles.add(ParagraphStyle(name='TitlePDF', fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=5*mm, textColor=colors.HexColor('#000000')))
     styles.add(ParagraphStyle(name='SectionTitle', fontSize=10, fontName='Helvetica-Bold', spaceBefore=5*mm, spaceAfter=3*mm, textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='DataLabel', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#666666'), alignment=0))
@@ -600,6 +703,7 @@ def criar_pdf_secundarios():
     styles.add(ParagraphStyle(name='ResultTitleLarge', fontSize=13, fontName='Helvetica-Bold', alignment=1, textColor=colors.white, backColor=AZUL_TABELA_PDF, topPadding=8, bottomPadding=8))
     styles.add(ParagraphStyle(name='TableHeaderPDF', fontSize=7, fontName='Helvetica-Bold', alignment=1, textColor=colors.HexColor('#333333')))
     styles.add(ParagraphStyle(name='TableCellPDF', fontSize=7, fontName='Helvetica', alignment=2))
+
 
     # 1. Cabeçalho
     logo = carregar_logo()
@@ -612,13 +716,13 @@ def criar_pdf_secundarios():
     story.append(Paragraph("Projeção de Retorno com Múltiplos Emissores", getSampleStyleSheet()['Normal']))
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm))
 
-    # 2. Dados Gerais
+    # 2. Dados Gerais (usando as session_state keys)
     story.append(Paragraph("DADOS DA SIMULAÇÃO", styles['SectionTitle']))
     
     data_geral = [
-        [Paragraph("Cliente", styles['DataLabel']), Paragraph(nome_cliente, styles['DataValue']),
-         Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(data_aplicacao.strftime('%d/%m/%Y'), styles['DataValue'])],
-        [Paragraph("Assessor", styles['DataLabel']), Paragraph(nome_assessor if nome_assessor else "N/A", styles['DataValue']),
+        [Paragraph("Cliente", styles['DataLabel']), Paragraph(st.session_state['nome_cliente'], styles['DataValue']),
+         Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(st.session_state['data_aplicacao'].strftime('%d/%m/%Y'), styles['DataValue'])],
+        [Paragraph("Assessor", styles['DataLabel']), Paragraph(st.session_state['nome_assessor_selected_key'] if st.session_state['nome_assessor_selected_key'] else "N/A", styles['DataValue']),
          Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{current_cdi_benchmark:.2f}% a.a.", styles['DataValue'])],
     ]
     total_width_pdf = A4[0] - 30*mm
@@ -642,7 +746,7 @@ def criar_pdf_secundarios():
             try:
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
-                vencimento_date = datetime.date.today() 
+                vencimento_date = st.session_state.data_aplicacao
         
         tipo_taxa_display = "Pós-fixado" if p['Tipo'] == 'Pós-fixado (% do CDI)' else p['Tipo']
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
@@ -745,7 +849,7 @@ def criar_pdf_secundarios():
             try:
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
-                vencimento_date = datetime.date.today()
+                vencimento_date = st.session_state.data_aplicacao
             
         data_tabela_detalhe.append([
             Paragraph(p['Ticker'], styles['TableCellPDF']),
@@ -775,7 +879,7 @@ def criar_pdf_secundarios():
 
     # 7. Rodapé e Disclaimer
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
-    story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor if nome_assessor != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
+    story.append(Paragraph(f"Simulação elaborada por <b>{st.session_state['nome_assessor_selected_key'] if st.session_state['nome_assessor_selected_key'] != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {st.session_state['data_simulacao'].strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
     
@@ -786,25 +890,22 @@ def criar_pdf_secundarios():
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
-
+# Fim das funções auxiliares
 
 # ===================== BOTÃO PDF (Com validação - SALVAMENTO REMOVIDO) =====================
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     # VALIDAÇÃO DO CAMPO OBRIGATÓRIO (Nome do Assessor)
-    if nome_assessor == "Selecione um Assessor...":
+    if st.session_state['nome_assessor_selected_key'] == "Selecione um Assessor...":
         st.error("O campo **Nome do Assessor** é obrigatório. Por favor, selecione um nome na lista para gerar a proposta.")
     else:
         with st.spinner("Gerando sua proposta premium consolidada..."):
             try:
                 pdf_data = criar_pdf_secundarios()
                 b64 = base64.b64encode(pdf_data).decode()
-                nome_arq = f"Proposta_RendaFixa_{nome_cliente.replace(' ', '_')}.pdf"
+                nome_arq = f"Proposta_RendaFixa_{st.session_state['nome_cliente'].replace(' ', '_')}.pdf"
                 href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
                 st.markdown(href, unsafe_allow_html=True)
                 st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
-                
-                # O SALVAMENTO AUTOMÁTICO FOI REMOVIDO DAQUI
-                # O usuário deve usar o botão "Salvar Simulação"
             
             except Exception as e:
                 if "papéis válidos" in str(e):
@@ -818,7 +919,7 @@ st.subheader("Mensagem Automática para Execução", divider='gray')
 
 if papeis_para_grafico:
     # Gera a mensagem formatada
-    execution_message = generate_execution_message(papeis_para_grafico, codigo_cliente)
+    execution_message = generate_execution_message(papeis_para_grafico, st.session_state['codigo_cliente'])
     
     # st.code fornece o botão de cópia nativo
     st.code(
@@ -835,7 +936,6 @@ else:
 with st.sidebar:
     st.title("📊 Desempenho (Mês Atual)")
     
-    # --- CORREÇÃO APLICADA AQUI ---
     # 1. Definir 'hoje' e o mês/ano corrente ANTES do filtro.
     hoje = datetime.date.today()
     mes_corrente = hoje.month
@@ -861,7 +961,7 @@ with st.sidebar:
     total_propostas = len(df_mes)
     total_investido_mes = df_mes['Valor Investido'].sum() if not df_mes.empty else 0
     
-    st.markdown(f"**{hoje.strftime('%B de %Y').upper()}**") # <-- AGORA 'hoje' ESTÁ DEFINIDO
+    st.markdown(f"**{hoje.strftime('%B de %Y').upper()}**")
     st.markdown("---")
     
     st.metric(
@@ -903,6 +1003,6 @@ with st.sidebar:
     
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
-    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor if nome_assessor != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
+    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{st.session_state['nome_assessor_selected_key'] if st.session_state['nome_assessor_selected_key'] != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {st.session_state['data_simulacao'].strftime('%d/%m/%Y')}</p>",
     unsafe_allow_html=True
 )
