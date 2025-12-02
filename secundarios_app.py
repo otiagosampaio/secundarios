@@ -16,8 +16,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.ticker as mticker
 import locale 
-import uuid # NOVO: Para gerar ID único
-import os # NOVO: Para verificar a existência do arquivo
+import uuid # Para gerar ID único
+import os # Para verificar a existência do arquivo
 
 # Configuração de locale para formatação de moeda em Python (não Streamlit)
 try:
@@ -196,7 +196,7 @@ def generate_execution_message(papeis, codigo_cliente):
         # Ticker é a chave interna que agora é exibida como Código
         codigo = p.get('Ticker', 'N/A') 
         valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
-        qtde = p.get('Qtde', 1.0) # NOVO: Recupera a quantidade
+        qtde = p.get('Qtde', 1.0) # Recupera a quantidade
         taxa_input = p.get('Taxa', 0.0)
         tipo = p.get('Tipo', 'Pré-fixado')
         vencimento_date = p.get('Data Vencimento')
@@ -304,7 +304,7 @@ def save_proposal_to_csv(papeis_para_grafico, nome_assessor, nome_cliente, codig
         st.error(f"Erro ao salvar no CSV: {e}")
         return None
 
-# ===================== FUNÇÃO DE VERIFICAÇÃO E LEITURA (CONSULTA) =====================
+# ===================== FUNÇÃO DE VERIFICAÇÃO E LEITURA (CONSULTA) - MANTIDA, MAS NÃO CHAMADA =====================
 
 def display_csv_content():
     """Carrega o arquivo CSV e exibe seu conteúdo para verificação."""
@@ -831,7 +831,7 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
     else:
         with st.spinner("Gerando e salvando sua proposta premium consolidada..."):
             try:
-                # 1. SALVAR DADOS NO CSV 
+                # 1. SALVAR DADOS NO CSV (FUNCIONALIDADE MANTIDA)
                 nome_assessor_atual = st.session_state['nome_assessor_selected_key']
                 nome_cliente_atual = st.session_state['nome_cliente']
                 codigo_cliente_atual = st.session_state['codigo_cliente']
@@ -852,7 +852,7 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 
                 st.success(f"Proposta com ID **{sim_id}** salva no CSV e PDF gerado com sucesso! Clique no link acima para baixar.")
                 
-                # Força a atualização da seção de consulta (CORRIGIDO)
+                # Força a atualização (mantendo a correção para evitar o erro anterior)
                 st.rerun() 
             
             except Exception as e:
@@ -877,12 +877,12 @@ if papeis_para_grafico:
 else:
     st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
 
-# ===================== VERIFICAÇÃO E GESTÃO DE PROPOSTAS SALVAS (NOVO) =====================
+# ===================== VERIFICAÇÃO E GESTÃO DE PROPOSTAS SALVAS (REMOVIDA DA VISUALIZAÇÃO) =====================
+# A SEÇÃO ABAIXO FOI REMOVIDA PARA ATENDER AO SEU PEDIDO:
 
-st.markdown("---")
-st.subheader("Consulta e Verificação de Propostas Salvas", divider='gray')
-
-display_csv_content() # CHAMA A FUNÇÃO DE LEITURA
+# st.markdown("---")
+# st.subheader("Consulta e Verificação de Propostas Salvas", divider='gray')
+# display_csv_content() 
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
