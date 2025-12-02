@@ -26,7 +26,7 @@ except locale.Error:
     except locale.Error:
         pass # Ignora se não conseguir configurar
 
-# ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS =====================
+# ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS E CORES =====================
 st.markdown("""
 <style>
 /* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 60% da largura da tela */
@@ -44,6 +44,19 @@ st.markdown("""
     max-width: 400px; /* Limite o logo para que não fique imenso */
     height: auto;
 }
+
+/* NOVO: Força o botão primário (tipo="primary") para o verde desejado (#2E8B57) */
+div.stButton > button[data-testid="baseButton-primary"] {
+    background-color: #2E8B57;
+    border-color: #2E8B57;
+    color: white !important;
+}
+
+div.stButton > button[data-testid="baseButton-primary"]:hover {
+    background-color: #3C9F68; /* Um tom mais claro no hover */
+    border-color: #3C9F68;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -54,7 +67,7 @@ URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" #
 TEXTO_PRINCIPAL_ST = "#222222"
 VERDE_DESTAQUE = '#2E8B57'
 AZUL_TABELA_PDF = colors.HexColor("#864df4")
-COR_PRIMARIA_FORM = '#6B48FF'
+COR_PRIMARIA_FORM = VERDE_DESTAQUE # Alterado para usar o verde
 TAXA_CDI_MERCADO = 14.90
 
 # ===================== FUNÇÕES AUXILIARES =====================
@@ -197,7 +210,8 @@ with c1:
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
 
 with c2:
-    nome_assessor = st.text_input("Nome do Assessor", "Seu Nome")
+    # ALTERADO: Campo vazio e obrigatório
+    nome_assessor = st.text_input("Nome do Assessor", "", required=True)
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
 st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral')
@@ -297,6 +311,7 @@ def clear_papeis():
     st.rerun()
 
 # Botão Limpar
+# O tipo é mantido como primary, mas a cor é definida para o verde via CSS no bloco inicial
 if st.button("Limpar Todos os Papéis", type="primary", use_container_width=True):
     clear_papeis()
     
@@ -645,15 +660,17 @@ def criar_pdf_secundarios():
     return buffer.getvalue()
 
 # ===================== BOTÃO PDF =====================
-if st.button("BAIXAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
+# ALTERADO: Label do botão
+if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     with st.spinner("Gerando sua proposta premium consolidada..."):
         try:
             pdf_data = criar_pdf_secundarios()
             b64 = base64.b64encode(pdf_data).decode()
             nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
+            # O texto interno do link de download permanece como "BAIXAR" para indicar a ação subsequente
             href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
             st.markdown(href, unsafe_allow_html=True)
-            st.success("Proposta premium gerada com sucesso!")
+            st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
         except Exception as e:
             st.error(f"Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido para gerar a proposta. Erro: {e}")
 
