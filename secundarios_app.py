@@ -852,8 +852,8 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 
                 st.success(f"Proposta com ID **{sim_id}** salva no CSV e PDF gerado com sucesso! Clique no link acima para baixar.")
                 
-                # Força a atualização da seção de consulta
-                st.experimental_rerun()
+                # Força a atualização da seção de consulta (CORRIGIDO)
+                st.rerun() 
             
             except Exception as e:
                 if "papéis válidos" in str(e):
