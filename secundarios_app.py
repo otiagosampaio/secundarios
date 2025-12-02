@@ -16,6 +16,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.ticker as mticker
 import locale 
+import uuid # NOVO: Para gerar ID único
+import os # NOVO: Para verificar a existência do arquivo
 
 # Configuração de locale para formatação de moeda em Python (não Streamlit)
 try:
@@ -69,6 +71,7 @@ VERDE_DESTAQUE = '#2E8B57'
 AZUL_TABELA_PDF = colors.HexColor("#864df4")
 COR_PRIMARIA_FORM = VERDE_DESTAQUE 
 TAXA_CDI_MERCADO = 14.90
+CSV_FILE = 'propostas.csv' # Nome do arquivo CSV para salvar
 
 # Lista de Assessores para o Selectbox
 ASSESSORES_LISTA = [
@@ -81,6 +84,7 @@ ASSESSORES_LISTA = [
 
 # ===================== FUNÇÕES AUXILIARES =====================
 
+# ... (funções carregar_logo, brl, brl_pdf, calcular_papel, generate_execution_message permanecem iguais) ...
 def carregar_logo():
     # Esta função é usada apenas para o PDF
     url = URL_LOGO_WHITE
@@ -237,220 +241,70 @@ def generate_execution_message(papeis, codigo_cliente):
     return message
 
 
-# ===================== SESSION STATE =====================
-if 'papeis' not in st.session_state:
-    st.session_state['papeis'] = []
-if 'cdi_benchmark_geral' not in st.session_state:
-    st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
-if 'nome_cliente' not in st.session_state:
-    st.session_state['nome_cliente'] = "João Silva"
-if 'codigo_cliente' not in st.session_state:
-    st.session_state['codigo_cliente'] = ""
-if 'nome_assessor_selected_key' not in st.session_state:
-    st.session_state['nome_assessor_selected_key'] = ASSESSORES_LISTA[0]
-if 'data_simulacao' not in st.session_state:
-    st.session_state['data_simulacao'] = datetime.date.today()
-if 'data_aplicacao' not in st.session_state:
-    st.session_state['data_aplicacao'] = datetime.date.today()
+# ===================== FUNÇÃO DE PERSISTÊNCIA (NOVO) =====================
+
+def save_proposal_to_csv(papeis_para_grafico, nome_assessor, nome_cliente, codigo_cliente):
+    """
+    Gera um ID único para a simulação e salva os dados no arquivo CSV.
+    Cada papel é uma linha no CSV, ligada pelo mesmo 'codigo_simulacao'.
+    """
+    if not papeis_para_grafico:
+        return None
+
+    # Gera um ID único para a simulação
+    simulation_id = f"SIM_{uuid.uuid4().hex[:8].upper()}"
+    data_hora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-# ===================== LOGO + TÍTULO (Streamlit Display) =====================
-st.markdown(
-    f"""<div style="text-align: center; margin: 10px 0;">
-        <img src="{URL_LOGO_WHITE}" style="max-width: 400px; height: auto;">
-    </div>""",
-    unsafe_allow_html=True
-)
-st.markdown(f"<h3 style='text-align: center; color: {TEXTO_PRINCIPAL_ST};'>Calculadora de Simulação de Papéis Secundários</h3>", unsafe_allow_html=True)
-st.markdown(f"<p style='text-align: center; font-size: 15px; margin-bottom: 20px;'>Adicione e gerencie os papéis diretamente na tabela abaixo para simular o resultado consolidado para o cliente.</p>", unsafe_allow_html=True)
-st.markdown("---")
+    # 1. Preparar os dados para salvar
+    data_to_save = []
+    for p in papeis_para_grafico:
+        # Garante que a data de vencimento seja formatada corretamente
+        vencimento_date = p.get('Data Vencimento')
+        if isinstance(vencimento_date, pd.Timestamp):
+            vencimento_str = vencimento_date.strftime('%Y-%m-%d')
+        elif isinstance(vencimento_date, datetime.date):
+            vencimento_str = vencimento_date.strftime('%Y-%m-%d')
+        else:
+            vencimento_str = str(vencimento_date)
 
-# ===================== DADOS GERAIS DA SIMULAÇÃO =====================
-st.subheader("Dados Gerais da Simulação", divider='gray')
+        row = {
+            'codigo_simulacao': simulation_id,
+            'data_hora_geracao': data_hora,
+            'nome_assessor': nome_assessor,
+            'nome_cliente': nome_cliente,
+            'codigo_cliente': codigo_cliente,
+            'emissor': p.get('Emissor'),
+            'codigo_cdb': p.get('Ticker'), # Usando Ticker como Código do CDB
+            'valor_investido': p.get('Valor Investido'),
+            'quantidade': p.get('Qtde'), 
+            'tipo_taxa': p.get('Tipo'), 
+            'taxa': p.get('Taxa'), 
+            'vencimento': vencimento_str
+        }
+        data_to_save.append(row)
 
-# LINHA 1: Nome do Cliente, Código do Cliente, Nome do Assessor
-col_nome, col_cod, col_assessor = st.columns(3)
-
-with col_nome:
-    st.text_input("Nome do Cliente", key='nome_cliente')
-
-with col_cod:
-    st.text_input("Código do Cliente", key='codigo_cliente')
-
-with col_assessor:
-    nome_assessor = st.selectbox(
-        "Nome do Assessor (Obrigatório)", 
-        options=ASSESSORES_LISTA,
-        key='nome_assessor_selected_key'
-    )
-
-# LINHA 2: Data da Simulação, Data de Aplicação, Taxa CDI Anual (Benchmark)
-col_data_sim, col_data_app, col_cdi = st.columns(3)
-
-with col_data_sim:
-    st.date_input("Data da Simulação", key='data_simulacao', format="DD/MM/YYYY")
-
-with col_data_app:
-    st.date_input("Data de Aplicação/Compra", key='data_aplicacao', format="DD/MM/YYYY")
-
-with col_cdi:
-    st.number_input("Taxa CDI Anual (Benchmark) (%)", step=0.05, key='cdi_benchmark_geral')
+    df_new_data = pd.DataFrame(data_to_save)
     
-st.markdown("---")
-
-# ===================== TABELA DE PAPÉIS ADICIONADOS =====================
-st.subheader("Papéis Incluídos para Simulação", divider='gray')
-
-# Prepara o DataFrame para o editor
-if st.session_state.papeis:
-    df_papeis = pd.DataFrame(st.session_state.papeis)
-    # Garante que 'Qtde' existe, ou usa 1.0 como padrão se for a primeira vez
-    if 'Qtde' not in df_papeis.columns:
-        df_papeis['Qtde'] = 1.0
-    df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
-    df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
-    df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) # Conversão de tipo
-    df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
-else:
-    # Adiciona 'Qtde' na criação do DataFrame vazio
-    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
-
-
-# Renomear colunas para exibição amigável (Ticker -> Código)
-df_papeis_edit = df_papeis.rename(columns={
-    'Emissor': 'Emissor',
-    'Ticker': 'Código',
-    'Valor': 'Valor Investido (R$)',
-    'Qtde': 'Qtde.', # Mapeamento da Qtde
-    'Tipo': 'Tipo de Taxa',
-    'Taxa': 'Taxa (%)',
-    'Data Vencimento': 'Vencimento',
-})
-
-# ORDEM: Inclui 'Qtde.' após 'Valor Investido (R$)'
-colunas_data_editor = ['Emissor', 'Código', 'Valor Investido (R$)', 'Qtde.', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
-
-st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
-
-edited_df = st.data_editor(
-    df_papeis_edit[colunas_data_editor],
-    hide_index=True,
-    num_rows="dynamic", # Inclusão na tabela
-    column_config={
-        "Valor Investido (R$)": st.column_config.NumberColumn(
-            "Valor Investido (R$)",
-            format="%.2f",
-            step=0.01,
-            min_value=0.01,
-        ),
-        "Qtde.": st.column_config.NumberColumn( # Configuração da Qtde
-            "Qtde.",
-            format="%.0f",
-            step=1,
-            min_value=1,
-            default=1,
-        ),
-        "Tipo de Taxa": st.column_config.SelectboxColumn(
-            "Tipo de Taxa",
-            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
-            required=True,
-        ),
-        "Taxa (%)": st.column_config.NumberColumn(
-            "Taxa (%)",
-            format="%.2f",
-            step=0.01,
-            min_value=0.01,
-        ),
-        "Vencimento": st.column_config.DateColumn(
-            "Vencimento",
-            format="DD/MM/YYYY",
-            min_value=datetime.date.today() + relativedelta(days=+1),
-        ),
-    },
-    key="data_editor_papeis"
-)
-
-# Processar as edições, adições e remoções do data_editor
-# Renomear 'Código' de volta para 'Ticker' (chave interna de cálculo)
-df_papeis_new = edited_df.rename(columns={
-    'Código': 'Ticker', 
-    'Valor Investido (R$)': 'Valor',
-    'Qtde.': 'Qtde', # Mapeamento de volta para chave interna
-    'Tipo de Taxa': 'Tipo',
-    'Taxa (%)': 'Taxa',
-    'Vencimento': 'Data Vencimento',
-})
-
-# Remove linhas onde os valores essenciais não são válidos
-df_papeis_new = df_papeis_new[
-    (df_papeis_new['Valor'].astype(float) > 0) &
-    (df_papeis_new['Taxa'].astype(float) > 0) &
-    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
-]
-
-papeis_anteriores_len = len(st.session_state.papeis)
-st.session_state.papeis = df_papeis_new.to_dict('records')
-
-if papeis_anteriores_len != len(st.session_state.papeis):
-    st.success("Tabela de papéis atualizada. Recalculando a simulação...")
-    st.rerun()
-
-# A seção "Ferramentas da Tabela" foi removida aqui.
+    # 2. Verificar se o arquivo existe para definir se precisa de cabeçalho
+    is_new_file = not os.path.exists(CSV_FILE)
     
-st.markdown("---") # Mantém a linha de separação antes dos cálculos
-
-# ===================== CÁLCULOS CONSOLIDADOS =====================
-if not st.session_state.papeis:
-    st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
-    st.stop()
-    
-resultados_calculados = []
-papeis_para_grafico = []
-
-current_cdi_benchmark = st.session_state.cdi_benchmark_geral
-
-for papel in st.session_state.papeis:
+    # 3. Salvar (append se existir, write com cabeçalho se for novo)
     try:
-        papel_temp = papel.copy()
-        papel_temp['Valor'] = float(papel_temp['Valor'])
-        papel_temp['Taxa'] = float(papel_temp['Taxa'])
-        # Qtde é apenas para a mensagem, mas garantimos o float
-        papel_temp['Qtde'] = float(papel_temp.get('Qtde', 1.0))
-    except (ValueError, TypeError):
-        continue
+        # Usa 'a' para anexar e ';', '.' para garantir o formato CSV
+        with open(CSV_FILE, 'a', encoding='utf-8') as f:
+            df_new_data.to_csv(f, 
+                               header=is_new_file, 
+                               index=False, 
+                               sep=';', 
+                               decimal='.') 
         
-    resultado, erro = calcular_papel(papel_temp, st.session_state.data_aplicacao, current_cdi_benchmark)
-    if resultado:
-        papel_temp.update(resultado)
-        papeis_para_grafico.append(papel_temp)
-        resultados_calculados.append(resultado)
-    elif erro:
-        st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
+        return simulation_id
+    except Exception as e:
+        st.error(f"Erro ao salvar no CSV: {e}")
+        return None
 
-if not resultados_calculados:
-    st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
-    st.stop()
 
-total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
-total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
-total_impostos = sum(r['Total Impostos'] for r in resultados_calculados)
-total_liquido = sum(r['Montante Líquido'] for r in resultados_calculados)
-rendimento_liquido_total = total_liquido - total_investido
-
-rentabilidade_efetiva = (rendimento_liquido_total / total_investido) * 100 if total_investido > 0 else 0.0
-
-st.subheader("Resultado Consolidado da Simulação", divider='gray')
-c1, c2, c3, c4 = st.columns(4)
-
-c1.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Total Investido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_investido)}</h4>", unsafe_allow_html=True)
-c2.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Bruto</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_bruto)}</h4>", unsafe_allow_html=True)
-c3.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Impostos (IR + IOF)</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_impostos)}</h4>", unsafe_allow_html=True)
-c4.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Líquido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_liquido)}</h4>", unsafe_allow_html=True)
-
-st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{brl(rendimento_liquido_total)}</span>", unsafe_allow_html=True)
-st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
-st.markdown("---")
-
-# ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
+# ... (restante das funções e constantes) ...
 def grafico_png():
     df_pdf = pd.DataFrame(papeis_para_grafico)
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
@@ -721,20 +575,246 @@ def criar_pdf_secundarios():
     return buffer.getvalue()
 # Fim das funções auxiliares
 
-# ===================== BOTÃO PDF =====================
+
+# ===================== SESSION STATE =====================
+if 'papeis' not in st.session_state:
+    st.session_state['papeis'] = []
+if 'cdi_benchmark_geral' not in st.session_state:
+    st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
+if 'nome_cliente' not in st.session_state:
+    st.session_state['nome_cliente'] = "João Silva"
+if 'codigo_cliente' not in st.session_state:
+    st.session_state['codigo_cliente'] = ""
+if 'nome_assessor_selected_key' not in st.session_state:
+    st.session_state['nome_assessor_selected_key'] = ASSESSORES_LISTA[0]
+if 'data_simulacao' not in st.session_state:
+    st.session_state['data_simulacao'] = datetime.date.today()
+if 'data_aplicacao' not in st.session_state:
+    st.session_state['data_aplicacao'] = datetime.date.today()
+    
+# ===================== LOGO + TÍTULO (Streamlit Display) =====================
+st.markdown(
+    f"""<div style="text-align: center; margin: 10px 0;">
+        <img src="{URL_LOGO_WHITE}" style="max-width: 400px; height: auto;">
+    </div>""",
+    unsafe_allow_html=True
+)
+st.markdown(f"<h3 style='text-align: center; color: {TEXTO_PRINCIPAL_ST};'>Calculadora de Simulação de Papéis Secundários</h3>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; font-size: 15px; margin-bottom: 20px;'>Adicione e gerencie os papéis diretamente na tabela abaixo para simular o resultado consolidado para o cliente.</p>", unsafe_allow_html=True)
+st.markdown("---")
+
+# ===================== DADOS GERAIS DA SIMULAÇÃO =====================
+st.subheader("Dados Gerais da Simulação", divider='gray')
+
+# LINHA 1: Nome do Cliente, Código do Cliente, Nome do Assessor
+col_nome, col_cod, col_assessor = st.columns(3)
+
+with col_nome:
+    st.text_input("Nome do Cliente", key='nome_cliente')
+
+with col_cod:
+    st.text_input("Código do Cliente", key='codigo_cliente')
+
+with col_assessor:
+    nome_assessor = st.selectbox(
+        "Nome do Assessor (Obrigatório)", 
+        options=ASSESSORES_LISTA,
+        key='nome_assessor_selected_key'
+    )
+
+# LINHA 2: Data da Simulação, Data de Aplicação, Taxa CDI Anual (Benchmark)
+col_data_sim, col_data_app, col_cdi = st.columns(3)
+
+with col_data_sim:
+    st.date_input("Data da Simulação", key='data_simulacao', format="DD/MM/YYYY")
+
+with col_data_app:
+    st.date_input("Data de Aplicação/Compra", key='data_aplicacao', format="DD/MM/YYYY")
+
+with col_cdi:
+    st.number_input("Taxa CDI Anual (Benchmark) (%)", step=0.05, key='cdi_benchmark_geral')
+    
+st.markdown("---")
+
+# ===================== TABELA DE PAPÉIS ADICIONADOS =====================
+st.subheader("Papéis Incluídos para Simulação", divider='gray')
+
+# Prepara o DataFrame para o editor
+if st.session_state.papeis:
+    df_papeis = pd.DataFrame(st.session_state.papeis)
+    # Garante que 'Qtde' existe, ou usa 1.0 como padrão se for a primeira vez
+    if 'Qtde' not in df_papeis.columns:
+        df_papeis['Qtde'] = 1.0
+    df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
+    df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
+    df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) # Conversão de tipo
+    df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
+else:
+    # Adiciona 'Qtde' na criação do DataFrame vazio
+    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
+
+
+# Renomear colunas para exibição amigável (Ticker -> Código)
+df_papeis_edit = df_papeis.rename(columns={
+    'Emissor': 'Emissor',
+    'Ticker': 'Código',
+    'Valor': 'Valor Investido (R$)',
+    'Qtde': 'Qtde.', # Mapeamento da Qtde
+    'Tipo': 'Tipo de Taxa',
+    'Taxa': 'Taxa (%)',
+    'Data Vencimento': 'Vencimento',
+})
+
+# ORDEM: Inclui 'Qtde.' após 'Valor Investido (R$)'
+colunas_data_editor = ['Emissor', 'Código', 'Valor Investido (R$)', 'Qtde.', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
+
+st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
+
+edited_df = st.data_editor(
+    df_papeis_edit[colunas_data_editor],
+    hide_index=True,
+    num_rows="dynamic", # Inclusão na tabela
+    column_config={
+        "Valor Investido (R$)": st.column_config.NumberColumn(
+            "Valor Investido (R$)",
+            format="%.2f",
+            step=0.01,
+            min_value=0.01,
+        ),
+        "Qtde.": st.column_config.NumberColumn( # Configuração da Qtde
+            "Qtde.",
+            format="%.0f",
+            step=1,
+            min_value=1,
+            default=1,
+        ),
+        "Tipo de Taxa": st.column_config.SelectboxColumn(
+            "Tipo de Taxa",
+            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
+            required=True,
+        ),
+        "Taxa (%)": st.column_config.NumberColumn(
+            "Taxa (%)",
+            format="%.2f",
+            step=0.01,
+            min_value=0.01,
+        ),
+        "Vencimento": st.column_config.DateColumn(
+            "Vencimento",
+            format="DD/MM/YYYY",
+            min_value=datetime.date.today() + relativedelta(days=+1),
+        ),
+    },
+    key="data_editor_papeis"
+)
+
+# Processar as edições, adições e remoções do data_editor
+# Renomear 'Código' de volta para 'Ticker' (chave interna de cálculo)
+df_papeis_new = edited_df.rename(columns={
+    'Código': 'Ticker', 
+    'Valor Investido (R$)': 'Valor',
+    'Qtde.': 'Qtde', # Mapeamento de volta para chave interna
+    'Tipo de Taxa': 'Tipo',
+    'Taxa (%)': 'Taxa',
+    'Vencimento': 'Data Vencimento',
+})
+
+# Remove linhas onde os valores essenciais não são válidos
+df_papeis_new = df_papeis_new[
+    (df_papeis_new['Valor'].astype(float) > 0) &
+    (df_papeis_new['Taxa'].astype(float) > 0) &
+    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
+]
+
+papeis_anteriores_len = len(st.session_state.papeis)
+st.session_state.papeis = df_papeis_new.to_dict('records')
+
+if papeis_anteriores_len != len(st.session_state.papeis):
+    st.success("Tabela de papéis atualizada. Recalculando a simulação...")
+    st.rerun()
+    
+st.markdown("---") 
+
+# ===================== CÁLCULOS CONSOLIDADOS =====================
+if not st.session_state.papeis:
+    st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
+    st.stop()
+    
+resultados_calculados = []
+papeis_para_grafico = []
+
+current_cdi_benchmark = st.session_state.cdi_benchmark_geral
+
+for papel in st.session_state.papeis:
+    try:
+        papel_temp = papel.copy()
+        papel_temp['Valor'] = float(papel_temp['Valor'])
+        papel_temp['Taxa'] = float(papel_temp['Taxa'])
+        # Qtde é apenas para a mensagem, mas garantimos o float
+        papel_temp['Qtde'] = float(papel_temp.get('Qtde', 1.0))
+    except (ValueError, TypeError):
+        continue
+        
+    resultado, erro = calcular_papel(papel_temp, st.session_state.data_aplicacao, current_cdi_benchmark)
+    if resultado:
+        papel_temp.update(resultado)
+        papeis_para_grafico.append(papel_temp)
+        resultados_calculados.append(resultado)
+    elif erro:
+        st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
+
+if not resultados_calculados:
+    st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
+    st.stop()
+
+total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
+total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
+total_impostos = sum(r['Total Impostos'] for r in resultados_calculados)
+total_liquido = sum(r['Montante Líquido'] for r in resultados_calculados)
+rendimento_liquido_total = total_liquido - total_investido
+
+rentabilidade_efetiva = (rendimento_liquido_total / total_investido) * 100 if total_investido > 0 else 0.0
+
+st.subheader("Resultado Consolidado da Simulação", divider='gray')
+c1, c2, c3, c4 = st.columns(4)
+
+c1.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Total Investido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_investido)}</h4>", unsafe_allow_html=True)
+c2.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Bruto</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_bruto)}</h4>", unsafe_allow_html=True)
+c3.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Impostos (IR + IOF)</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_impostos)}</h4>", unsafe_allow_html=True)
+c4.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Líquido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_liquido)}</h4>", unsafe_allow_html=True)
+
+st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{brl(rendimento_liquido_total)}</span>", unsafe_allow_html=True)
+st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
+st.markdown("---")
+
+# ===================== BOTÃO PDF (AGORA SALVA ANTES DE GERAR) =====================
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     # VALIDAÇÃO DO CAMPO OBRIGATÓRIO (Nome do Assessor)
     if st.session_state['nome_assessor_selected_key'] == "Selecione um Assessor...":
         st.error("O campo **Nome do Assessor** é obrigatório. Por favor, selecione um nome na lista para gerar a proposta.")
     else:
-        with st.spinner("Gerando sua proposta premium consolidada..."):
+        with st.spinner("Gerando e salvando sua proposta premium consolidada..."):
             try:
+                # 1. SALVAR DADOS NO CSV (NOVO PASSO)
+                nome_assessor_atual = st.session_state['nome_assessor_selected_key']
+                nome_cliente_atual = st.session_state['nome_cliente']
+                codigo_cliente_atual = st.session_state['codigo_cliente']
+                
+                sim_id = save_proposal_to_csv(papeis_para_grafico, nome_assessor_atual, nome_cliente_atual, codigo_cliente_atual)
+                
+                if not sim_id:
+                    # Se não salvou, interrompe a geração do PDF e mostra o erro
+                    st.error("Falha ao salvar a proposta no banco de dados CSV. Verifique se o arquivo 'propostas.csv' existe e se as permissões de escrita estão corretas.")
+                    st.stop()
+                    
+                # 2. GERAR PDF
                 pdf_data = criar_pdf_secundarios()
                 b64 = base64.b64encode(pdf_data).decode()
                 nome_arq = f"Proposta_RendaFixa_{st.session_state['nome_cliente'].replace(' ', '_')}.pdf"
                 href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
                 st.markdown(href, unsafe_allow_html=True)
-                st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
+                
+                st.success(f"Proposta com ID **{sim_id}** salva no CSV e PDF gerado com sucesso! Clique no link acima para baixar.")
             
             except Exception as e:
                 if "papéis válidos" in str(e):
