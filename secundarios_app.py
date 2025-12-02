@@ -31,7 +31,7 @@ st.markdown("""
 <style>
 /* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 50% da largura da tela (AJUSTE SOLICITADO) */
 .main .block-container {
-    max-width: 50% !important; 
+    max-width: 70% !important; 
     padding-left: 2rem;
     padding-right: 2rem;
 }
