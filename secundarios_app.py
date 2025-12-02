@@ -187,9 +187,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 # ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
 def generate_execution_message(papeis, codigo_cliente):
     """Gera a mensagem formatada para a mesa de operações."""
-    
-    message = "Solicito seguir com a aplicação com os detalhes abaixo:\n\n"
-    
+      
     for p in papeis:
         # 1. Recupera dados do papel
         emissor = p.get('Emissor', 'N/A')
@@ -233,10 +231,7 @@ def generate_execution_message(papeis, codigo_cliente):
         line = f"{emissor} - {codigo} - {taxa_str} - {qtde_str} Qtde - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
         
         message += line + "\n"
-
-    # 6. Adiciona o fechamento
-    message += "\nObrigado!"
-    
+ 
     return message
 
 
