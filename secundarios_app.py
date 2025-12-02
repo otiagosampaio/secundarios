@@ -32,8 +32,8 @@ st.markdown("""
 /* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 50% da largura da tela (AJUSTE SOLICITADO) */
 .main .block-container {
     max-width: 50% !important; 
-    padding-left: 30rem;
-    padding-right: 30rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
 }
 
 /* 2. Ajusta o tamanho do logo (máximo 400px e centraliza) */
@@ -47,7 +47,7 @@ st.markdown("""
 
 /* NOVO: Força o botão primário (tipo="primary") para o verde desejado (#2E8B57) */
 div.stButton > button[data-testid="baseButton-primary"] {
-    background-color: #2E8B57;
+    background-color: #2E8B57 !important;
     border-color: #2E8B57;
     color: white !important;
 }
