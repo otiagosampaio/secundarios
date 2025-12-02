@@ -478,7 +478,7 @@ def criar_pdf_secundarios():
     story.append(Spacer(1, 3*mm))
     story.append(logo)
     story.append(Spacer(1, 3*mm))
-    story.append(Paragraph("Simulação Consolidada - Papéis Secundários", styles['TitlePDF']))
+    story.append(Paragraph("Simulação Consolidada - Renda Fixa FGC", styles['TitlePDF']))
     story.append(Paragraph("Projeção de Retorno com Múltiplos Emissores", getSampleStyleSheet()['Normal']))
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm))
 
