@@ -29,9 +29,9 @@ except locale.Error:
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS E CORES =====================
 st.markdown("""
 <style>
-/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 60% da largura da tela */
+/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 50% da largura da tela (AJUSTE SOLICITADO) */
 .main .block-container {
-    max-width: 60% !important;
+    max-width: 50% !important; 
     padding-left: 2rem;
     padding-right: 2rem;
 }
@@ -53,7 +53,8 @@ div.stButton > button[data-testid="baseButton-primary"] {
 }
 
 div.stButton > button[data-testid="baseButton-primary"]:hover {
-    background-color: #3C9F68; /* Um tom mais claro no hover */
+    background-color: #3C9F68;
+    /* Um tom mais claro no hover */
     border-color: #3C9F68;
 }
 
@@ -129,6 +130,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     # Fórmula: (1 + TaxaAnual/100)^(1/360) - 1
     taxa_diaria = (1 + taxa_anual_real/100)**(1/dias_ano) - 1
 
+    
     # --- 3. CÁLCULO BRUTO ---
     # Juros Compostos: Montante = Valor * (1 + TaxaDiária)^PrazoDias
     montante_bruto = valor_investido * (1 + taxa_diaria)**prazo_dias
@@ -141,7 +143,7 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     if prazo_dias < 30:
         # Tabela IOF regressiva para os 29 dias (em porcentagem/100)
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
-                     0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
+                 0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
         
         # O IOF é aplicado do 1º ao 29º dia. Prazo - 1 para obter o índice (0 a 28)
         idx = prazo_dias - 1
@@ -443,7 +445,7 @@ def grafico_png():
     buf = BytesIO()
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
     buf.seek(0)
-    plt.close(fig_pdf) # Fecha a figura para não poluir o Streamlit
+    plt.close(fig_pdf) # Fechas a figura para não poluir o Streamlit
     
     return buf
 
@@ -506,7 +508,7 @@ def criar_pdf_secundarios():
         if isinstance(vencimento_date, pd.Timestamp):
             vencimento_date = vencimento_date.date()
         elif isinstance(vencimento_date, str):
-             # Tratar caso de string que passou do data_editor
+            # Tratar caso de string que passou do data_editor
             try:
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
