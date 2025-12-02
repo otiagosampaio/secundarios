@@ -15,7 +15,7 @@ from io import BytesIO as PIOBytesIO
 import pandas as pd
 import numpy as np
 import matplotlib.ticker as mticker
-import locale # Importar locale para precisão
+import locale 
 
 # Configuração de locale para formatação de moeda em Python (não Streamlit)
 try:
@@ -67,7 +67,7 @@ URL_LOGO_WHITE = "https://ik.imagekit.io/aufhkvnry/logo-traders__bg-white.png" #
 TEXTO_PRINCIPAL_ST = "#222222"
 VERDE_DESTAQUE = '#2E8B57'
 AZUL_TABELA_PDF = colors.HexColor("#864df4")
-COR_PRIMARIA_FORM = VERDE_DESTAQUE # Alterado para usar o verde
+COR_PRIMARIA_FORM = VERDE_DESTAQUE 
 TAXA_CDI_MERCADO = 14.90
 
 # ===================== FUNÇÕES AUXILIARES =====================
@@ -210,8 +210,8 @@ with c1:
     data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
 
 with c2:
-    # ALTERADO: Campo vazio e obrigatório
-    nome_assessor = st.text_input("Nome do Assessor", "", required=True)
+    # CORREÇÃO DO ERRO: Removido required=True para evitar TypeError
+    nome_assessor = st.text_input("Nome do Assessor", "")
     data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
 
 st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral')
@@ -311,7 +311,6 @@ def clear_papeis():
     st.rerun()
 
 # Botão Limpar
-# O tipo é mantido como primary, mas a cor é definida para o verde via CSS no bloco inicial
 if st.button("Limpar Todos os Papéis", type="primary", use_container_width=True):
     clear_papeis()
     
@@ -486,7 +485,7 @@ def criar_pdf_secundarios():
     data_geral = [
         [Paragraph("Cliente", styles['DataLabel']), Paragraph(nome_cliente, styles['DataValue']),
          Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(data_aplicacao.strftime('%d/%m/%Y'), styles['DataValue'])],
-        [Paragraph("Assessor", styles['DataLabel']), Paragraph(nome_assessor, styles['DataValue']),
+        [Paragraph("Assessor", styles['DataLabel']), Paragraph(nome_assessor if nome_assessor else "N/A", styles['DataValue']),
          Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{current_cdi_benchmark:.2f}% a.a.", styles['DataValue'])],
     ]
     total_width_pdf = A4[0] - 30*mm
@@ -647,7 +646,7 @@ def criar_pdf_secundarios():
 
     # 7. Rodapé e Disclaimer
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
-    story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
+    story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor if nome_assessor else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
     
@@ -662,20 +661,29 @@ def criar_pdf_secundarios():
 # ===================== BOTÃO PDF =====================
 # ALTERADO: Label do botão
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
-    with st.spinner("Gerando sua proposta premium consolidada..."):
-        try:
-            pdf_data = criar_pdf_secundarios()
-            b64 = base64.b64encode(pdf_data).decode()
-            nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
-            # O texto interno do link de download permanece como "BAIXAR" para indicar a ação subsequente
-            href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
-            st.markdown(href, unsafe_allow_html=True)
-            st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
-        except Exception as e:
-            st.error(f"Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido para gerar a proposta. Erro: {e}")
+    # VALIDAÇÃO MANUAL PARA O CAMPO OBRIGATÓRIO
+    if not nome_assessor:
+        st.error("O campo 'Nome do Assessor' é obrigatório. Por favor, preencha para gerar a proposta.")
+    else:
+        with st.spinner("Gerando sua proposta premium consolidada..."):
+            try:
+                pdf_data = criar_pdf_secundarios()
+                b64 = base64.b64encode(pdf_data).decode()
+                nome_arq = f"Proposta_Secundarios_{nome_cliente.replace(' ', '_')}.pdf"
+                # O texto interno do link de download permanece como "BAIXAR" para indicar a ação subsequente
+                href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
+                st.markdown(href, unsafe_allow_html=True)
+                st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
+            except Exception as e:
+                # Caso o erro seja do tipo "Não há papéis válidos..." o erro será mais amigável
+                if "papéis válidos" in str(e):
+                    st.error("Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido na tabela (Valor > R$0, Taxa > 0% e Vencimento futuro).")
+                else:
+                    # Em caso de erro desconhecido, mostra a mensagem genérica
+                    st.error(f"Ocorreu um erro inesperado ao gerar o PDF. Por favor, tente novamente. Detalhe técnico: {e}")
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
-    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
+    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor if nome_assessor else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
     unsafe_allow_html=True
 )
