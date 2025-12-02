@@ -58,6 +58,13 @@ div.stButton > button[data-testid="baseButton-primary"]:hover {
     border-color: #3C9F68;
 }
 
+/* Ajusta o padding da sidebar para melhor visualização do dashboard */
+[data-testid="stSidebar"] {
+    padding-top: 2rem; 
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,6 +107,15 @@ def carregar_logo():
 brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def adicionar_ao_historico(nome_assessor, data_simulacao, total_investido):
+    """Adiciona a proposta recém-criada ao histórico de sessões."""
+    if nome_assessor != "Selecione um Assessor...":
+        st.session_state['historico_propostas'].append({
+            'Assessor': nome_assessor,
+            'Data Simulação': data_simulacao,
+            'Valor Investido': total_investido
+        })
+        
 # ===================== CÁLCULO FINANCEIRO =====================
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
@@ -245,6 +261,10 @@ if 'papeis' not in st.session_state:
     st.session_state['papeis'] = []
 if 'cdi_benchmark_geral' not in st.session_state:
     st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
+# NOVO: Histórico para o dashboard da barra lateral
+if 'historico_propostas' not in st.session_state:
+    # Estrutura: [{'Assessor': 'Tiago Sampaio', 'Data Simulação': date(2025, 12, 1), 'Valor Investido': 150000.00}]
+    st.session_state['historico_propostas'] = [] 
     
 # ===================== LOGO + TÍTULO (Streamlit Display) =====================
 st.markdown(
@@ -437,9 +457,9 @@ st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}
 st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
+# ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO (Inalteradas) =====================
 def grafico_png():
-    # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
+    # ... (código da função grafico_png inalterado) ...
     df_pdf = pd.DataFrame(papeis_para_grafico)
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
     df_pdf = df_pdf.dropna(subset=['Data Vencimento'])
@@ -498,6 +518,7 @@ def grafico_png():
     return buf
 
 def criar_pdf_secundarios():
+    # ... (código da função criar_pdf_secundarios inalterado, exceto a chamada do logo) ...
     if not papeis_para_grafico:
         raise ValueError("Não há papéis válidos para gerar a proposta consolidada.")
         
@@ -506,7 +527,7 @@ def criar_pdf_secundarios():
     story = []
     styles = getSampleStyleSheet()
     
-    # Estilos
+    # Estilos (omitidos para brevidade, são os mesmos)
     styles.add(ParagraphStyle(name='TitlePDF', fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=5*mm, textColor=colors.HexColor('#000000')))
     styles.add(ParagraphStyle(name='SectionTitle', fontSize=10, fontName='Helvetica-Bold', spaceBefore=5*mm, spaceAfter=3*mm, textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='DataLabel', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#666666'), alignment=0))
@@ -692,7 +713,7 @@ def criar_pdf_secundarios():
 
     # 7. Rodapé e Disclaimer
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
-    story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor if nome_assessor else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
+    story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor if nome_assessor != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
     
@@ -705,7 +726,7 @@ def criar_pdf_secundarios():
     return buffer.getvalue()
 
 
-# ===================== BOTÃO PDF (Com validação do Assessor) =====================
+# ===================== BOTÃO PDF (Com validação e Adição ao Histórico) =====================
 if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
     # VALIDAÇÃO DO CAMPO OBRIGATÓRIO (Nome do Assessor)
     if nome_assessor == "Selecione um Assessor...":
@@ -719,6 +740,11 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
                 st.markdown(href, unsafe_allow_html=True)
                 st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
+                
+                # ADICIONA AO HISTÓRICO APÓS GERAÇÃO BEM SUCEDIDA
+                adicionar_ao_historico(nome_assessor, data_simulacao, total_investido)
+                st.rerun() # Re-executa para atualizar o dashboard na sidebar
+
             except Exception as e:
                 if "papéis válidos" in str(e):
                     st.error("Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido na tabela (Valor > R$0, Taxa > 0% e Vencimento futuro).")
@@ -743,6 +769,75 @@ if papeis_para_grafico:
 else:
     st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
 
+
+# ===================== DASHBOARD NA BARRA LATERAL (st.sidebar) =====================
+with st.sidebar:
+    st.title("📊 Desempenho (Mês Atual)")
+    
+    # 1. Preparar os dados
+    if st.session_state.historico_propostas:
+        df_historico = pd.DataFrame(st.session_state.historico_propostas)
+        
+        # Garantir que a coluna 'Data Simulação' é datetime e 'Valor Investido' é numérica
+        df_historico['Data Simulação'] = pd.to_datetime(df_historico['Data Simulação'], errors='coerce')
+        df_historico['Valor Investido'] = pd.to_numeric(df_historico['Valor Investido'], errors='coerce')
+        
+        # Filtrar apenas o mês corrente (baseado na data de hoje)
+        hoje = datetime.date.today()
+        mes_corrente = hoje.month
+        ano_corrente = hoje.year
+        
+        df_mes = df_historico[
+            (df_historico['Data Simulação'].dt.month == mes_corrente) & 
+            (df_historico['Data Simulação'].dt.year == ano_corrente)
+        ].copy()
+    else:
+        df_mes = pd.DataFrame()
+        
+    # 2. Métricas Totais do Mês
+    total_propostas = len(df_mes)
+    total_investido_mes = df_mes['Valor Investido'].sum() if not df_mes.empty else 0
+    
+    st.markdown(f"**{hoje.strftime('%B de %Y').upper()}**")
+    st.markdown("---")
+    
+    st.metric(
+        label="Total de Propostas Criadas", 
+        value=f"{total_propostas} Proposta{'s' if total_propostas != 1 else ''}"
+    )
+    st.metric(
+        label="Volume Total Simulado (R$)", 
+        value=brl(total_investido_mes).replace("R$ ", "")
+    )
+    st.markdown("---")
+    
+    # 3. Métricas por Assessor
+    st.subheader("Por Assessor")
+    
+    if total_propostas > 0:
+        # Calcular contagem e soma por assessor
+        df_sumario = df_mes.groupby('Assessor').agg(
+            Contagem=('Valor Investido', 'count'),
+            Soma=('Valor Investido', 'sum')
+        ).reset_index()
+        
+        # Ordenar pelo maior volume (Soma)
+        df_sumario = df_sumario.sort_values(by='Soma', ascending=False)
+        
+        for index, row in df_sumario.iterrows():
+            assessor_nome = row['Assessor']
+            contagem = row['Contagem']
+            soma = row['Soma']
+            
+            # Exibe as métricas de forma compacta
+            st.markdown(f"**{assessor_nome}:**")
+            st.caption(f"Propostas: **{contagem}** | Volume: **{brl(soma).replace('R$ ', '')}**")
+
+    else:
+        st.info("Nenhuma proposta registrada para o mês corrente.")
+        
+    st.markdown("---")
+    
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
     f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor if nome_assessor != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
