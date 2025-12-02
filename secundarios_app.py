@@ -92,7 +92,6 @@ brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", 
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ===================== CÁLCULO CORRIGIDO PARA UM ÚNICO PAPEL =====================
-# ... (Função calcular_papel não alterada) ...
 def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
     data_vencimento = papel['Data Vencimento']
@@ -383,7 +382,6 @@ st.markdown("---")
 
 # ===================== PDF GERAÇÃO (Funções de PDF e Gráfico não alteradas) =====================
 def grafico_png():
-    # ... (implementação da função grafico_png) ...
     # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
     df_pdf = pd.DataFrame(papeis_para_grafico)
     
@@ -462,7 +460,6 @@ def grafico_png():
     return buf
 
 def criar_pdf_secundarios():
-    # ... (implementação da função criar_pdf_secundarios) ...
     if not papeis_para_grafico:
         raise ValueError("Não há papéis válidos para gerar a proposta consolidada.")
         
@@ -761,12 +758,12 @@ if papeis_para_grafico:
     # Gera a mensagem formatada
     execution_message = generate_execution_message(papeis_para_grafico, codigo_cliente)
     
-    st.text_area(
-        "Copie e envie esta mensagem para a mesa de operações:",
+    # Substituído st.text_area por st.code para ter o botão de cópia nativo
+    st.code(
         execution_message,
-        height=250,
-        key="execution_message_area"
+        language='markdown' # Usando 'markdown' ou outro não-Python para não destacar sintaxe
     )
+    st.caption("Utilize o ícone **Copy** no canto superior direito para copiar a mensagem.")
     
 else:
     st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
