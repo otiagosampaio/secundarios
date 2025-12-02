@@ -852,8 +852,7 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 
                 st.success(f"Proposta com ID **{sim_id}** salva no CSV e PDF gerado com sucesso! Clique no link acima para baixar.")
                 
-                # Força a atualização (mantendo a correção para evitar o erro anterior)
-                st.rerun() 
+                # A LINHA st.rerun() FOI REMOVIDA AQUI PARA MANTER O LINK VISÍVEL
             
             except Exception as e:
                 if "papéis válidos" in str(e):
@@ -876,13 +875,6 @@ if papeis_para_grafico:
     
 else:
     st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
-
-# ===================== VERIFICAÇÃO E GESTÃO DE PROPOSTAS SALVAS (REMOVIDA DA VISUALIZAÇÃO) =====================
-# A SEÇÃO ABAIXO FOI REMOVIDA PARA ATENDER AO SEU PEDIDO:
-
-# st.markdown("---")
-# st.subheader("Consulta e Verificação de Propostas Salvas", divider='gray')
-# display_csv_content() 
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
