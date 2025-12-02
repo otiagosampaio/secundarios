@@ -111,7 +111,6 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
         data_vencimento = data_vencimento.date()
     elif isinstance(data_vencimento, str):
         try:
-            # Esta linha foi verificada e está correta
             data_vencimento = datetime.datetime.strptime(data_vencimento, '%Y-%m-%d').date()
         except ValueError:
             try:
@@ -641,7 +640,7 @@ def criar_pdf_secundarios():
     
     story.append(Spacer(1, 5*mm))
 
-    # --- NOVO BLOCO: TABELA DE DETALHAMENTO POR PAPEL ---
+    # --- BLOCO: TABELA DE DETALHAMENTO POR PAPEL ---
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
     story.append(Paragraph("DETALHAMENTO POR PAPEL E TRIBUTAÇÃO", styles['SectionTitle']))
     
@@ -655,6 +654,7 @@ def criar_pdf_secundarios():
          Paragraph("Montante Líquido", styles['TableHeaderPDF'])]
     ]
     
+    # Início do loop (aqui estava o erro de indentação)
     for p in papeis_para_grafico:
         vencimento_date = p['Data Vencimento']
         if isinstance(vencimento_date, pd.Timestamp):
@@ -665,7 +665,7 @@ def criar_pdf_secundarios():
             except:
                 vencimento_date = st.session_state.data_aplicacao
         
-        # FIX: data_tabela_detalhe.append movido para fora do bloco elif para ser executado para todos os casos.
+        # CORREÇÃO: Esta linha estava indentada no 'elif' acima e agora está no nível do 'for'
         data_tabela_detalhe.append([
             Paragraph(p['Ticker'], styles['TableCellPDF']), # Acesso pela chave interna 'Ticker'
             Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
@@ -689,7 +689,7 @@ def criar_pdf_secundarios():
     ]))
     story.append(t_detalhe)
     story.append(Spacer(1, 5*mm))
-    # --- FIM NOVO BLOCO ---
+    # --- FIM BLOCO ---
 
 
     # 7. Rodapé e Disclaimer
