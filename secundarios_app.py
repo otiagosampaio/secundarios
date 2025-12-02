@@ -32,8 +32,8 @@ st.markdown("""
 /* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 50% da largura da tela (AJUSTE SOLICITADO) */
 .main .block-container {
     max-width: 50% !important; 
-    padding-left: 8rem;
-    padding-right: 8rem;
+    padding-left: 30rem;
+    padding-right: 30rem;
 }
 
 /* 2. Ajusta o tamanho do logo (máximo 400px e centraliza) */
