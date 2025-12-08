@@ -380,10 +380,18 @@ df_papeis_new = edited_df.rename(columns={
     'Vencimento': 'Data Vencimento',
 })
 
-# Remove linhas onde os valores essenciais não são válidos
+# --- CORREÇÃO DE ESTABILIDADE: Garantir que as colunas numéricas aceitem entradas inválidas do data_editor ---
+# Converte colunas para numérico, forçando erro para NaN, e remove as linhas inválidas.
+df_papeis_new['Valor'] = pd.to_numeric(df_papeis_new['Valor'], errors='coerce')
+df_papeis_new['Qtde'] = pd.to_numeric(df_papeis_new['Qtde'], errors='coerce')
+df_papeis_new['Taxa'] = pd.to_numeric(df_papeis_new['Taxa'], errors='coerce')
+
+# Remove linhas onde os valores essenciais não são válidos ou são NaN
 df_papeis_new = df_papeis_new[
-    (df_papeis_new['Valor'].astype(float) > 0) &
-    (df_papeis_new['Taxa'].astype(float) > 0) &
+    (df_papeis_new['Valor'].notnull()) &  # Garante que Valor não é NaN (Remove linhas inválidas)
+    (df_papeis_new['Taxa'].notnull()) &   # Garante que Taxa não é NaN (Remove linhas inválidas)
+    (df_papeis_new['Valor'] > 0) &
+    (df_papeis_new['Taxa'] > 0) &
     (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
 ]
 
