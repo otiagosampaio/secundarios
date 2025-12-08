@@ -395,12 +395,14 @@ df_papeis_new = df_papeis_new[
     (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
 ]
 
-papeis_anteriores_len = len(st.session_state.papeis)
+# Não precisamos do RERUN aqui se a lógica de cálculo for imediata.
+# Simplesmente atualize a session_state, e o fluxo do Streamlit se encarregará
+# de executar o restante do código na mesma rodada (se houver dados).
+
 st.session_state.papeis = df_papeis_new.to_dict('records')
 
-if papeis_anteriores_len != len(st.session_state.papeis):
-    st.success("Tabela de papéis atualizada. Recalculando a simulação...")
-    st.rerun()
+# Nota: A remoção do st.rerun() após a edição do dataframe evita loops e
+# garante que o processamento (cálculos) na seção abaixo seja feito na mesma rodada.
 
 # A seção "Ferramentas da Tabela" foi removida aqui.
     
