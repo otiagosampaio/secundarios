@@ -16,7 +16,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.ticker as mticker
 import locale 
-# Removidos: import uuid e import os
 
 # Configuração de locale para formatação de moeda em Python (não Streamlit)
 try:
@@ -30,9 +29,9 @@ except locale.Error:
 # ===================== INJEÇÃO DE CSS PARA CONTROLAR AS LARGURAS E CORES =====================
 st.markdown("""
 <style>
-/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 80% da largura da tela */
+/* 1. Limita o conteúdo principal (inputs, tabelas, etc.) a 70% da largura da tela */
 .main .block-container {
-    max-width: 80% !important;
+    max-width: 70% !important; 
     padding-left: 2rem;
     padding-right: 2rem;
 }
@@ -42,7 +41,7 @@ st.markdown("""
     display: block;
     margin-left: auto;
     margin-right: auto;
-    max-width: 400px; 
+    max-width: 400px; /* Limite o logo para que não fique imenso */
     height: auto;
 }
 
@@ -55,6 +54,7 @@ div.stButton > button[data-testid="baseButton-primary"] {
 
 div.stButton > button[data-testid="baseButton-primary"]:hover {
     background-color: #3C9F68;
+    /* Um tom mais claro no hover */
     border-color: #3C9F68;
 }
 
@@ -70,7 +70,6 @@ VERDE_DESTAQUE = '#2E8B57'
 AZUL_TABELA_PDF = colors.HexColor("#864df4")
 COR_PRIMARIA_FORM = VERDE_DESTAQUE 
 TAXA_CDI_MERCADO = 14.90
-# Removido: CSV_FILE = 'propostas.csv' 
 
 # Lista de Assessores para o Selectbox
 ASSESSORES_LISTA = [
@@ -118,10 +117,9 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
             try:
                 data_vencimento = datetime.datetime.strptime(data_vencimento, '%d/%m/%Y').date()
             except ValueError:
-                # Usa 'Código' no erro para ser consistente com o frontend, embora a chave interna seja 'Ticker'
                 return None, f"Formato de Data de Vencimento inválido para {papel.get('Ticker', 'novo papel')}"
 
-    # Prazo (diferença de dias)
+    # Prazo (diferença entre a data de vencimento e a data de aplicação)
     prazo_dias = (data_vencimento - data_aplicacao).days
     
     if prazo_dias <= 0 or valor_investido <= 0 or taxa_input <= 0:
@@ -132,8 +130,8 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     
     # --- 2. TAXA REAL ---
     taxa_anual_real = taxa_input
-    # CORREÇÃO DE SINTAXE: String literal completa
-    if tipo == "Pós-fixado (% do CDI)": 
+    if tipo == "Pós-fixado (% do CDI)":
+        # Converte para taxa anual real em porcentagem
         taxa_anual_real = taxa_cdi_benchmark * (taxa_input / 100)
     
     # Converte taxa anual (%) para fator diário
@@ -149,9 +147,11 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     imposto_iof = 0.0
     
     if prazo_dias < 30:
+        # Tabela IOF regressiva para os 29 dias (em porcentagem/100)
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
                  0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
         
+        # O IOF é aplicado do 1º ao 29º dia.
         idx = prazo_dias - 1
         aliquota_iof = iof_tab[idx]
         
@@ -159,15 +159,18 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
         rendimento_apos_iof = rendimento_bruto - imposto_iof
 
     # --- 5. CÁLCULO IR ---
+    # Alíquota IR (Tabela Regressiva)
     aliquota_ir = 22.5 if prazo_dias <= 180 else 20.0 if prazo_dias <= 360 else 17.5 if prazo_dias <= 720 else 15.0
     
     imposto_ir = rendimento_apos_iof * (aliquota_ir/100)
     
     # --- 6. RESULTADO FINAL ---
     total_impostos = imposto_iof + imposto_ir
+    
     montante_liquido = valor_investido + rendimento_apos_iof - imposto_ir
     rendimento_liquido = montante_liquido - valor_investido
     
+    # Arredondamento final dos resultados financeiros (2 casas decimais)
     resultado = {
         'Valor Investido': round(valor_investido, 2),
         'Montante Bruto': round(montante_bruto, 2),
@@ -183,11 +186,260 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     }
 
     return resultado, None
+# ... (Fim da função calcular_papel) ...
 
-# Removidas: generate_execution_message, save_proposal_to_csv, display_csv_content
+# ===================== FUNÇÃO GERADORA DE MENSAGEM DE EXECUÇÃO =====================
+
+def generate_execution_message(papeis, codigo_cliente):
+    """Gera a mensagem formatada para a mesa de operações."""
+    
+    message = "Solicito seguir com a aplicação com os detalhes abaixo:\n\n"
+    
+    for p in papeis:
+        # 1. Recupera dados do papel
+        emissor = p.get('Emissor', 'N/A')
+        ticker = p.get('Ticker', 'N/A')
+        # Prioriza o Valor Investido do cálculo se existir
+        valor = p.get('Valor Investido', p.get('Valor', 0.0)) 
+        taxa_input = p.get('Taxa', 0.0)
+        tipo = p.get('Tipo', 'Pré-fixado')
+        vencimento_date = p.get('Data Vencimento')
+
+        # 2. Formata Taxa
+        if tipo == 'Pré-fixado':
+            taxa_str = f"{taxa_input:.2f}% a.a."
+        elif tipo == 'Pós-fixado (% do CDI)':
+            taxa_str = f"{taxa_input:.2f}% do CDI"
+        else:
+            taxa_str = f"{taxa_input:.2f}%"
+
+        # 3. Formata Vencimento
+        vencimento_str = 'N/A'
+        if isinstance(vencimento_date, datetime.date):
+            vencimento_str = vencimento_date.strftime('%d/%m/%Y')
+        elif isinstance(vencimento_date, pd.Timestamp):
+            vencimento_str = vencimento_date.date().strftime('%d/%m/%Y')
+        elif isinstance(vencimento_date, str):
+            try:
+                vencimento_str = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date().strftime('%d/%m/%Y')
+            except:
+                pass
+            
+        # 4. Formata Valor
+        valor_str = brl(valor).replace("R$ ", "") 
+
+        # 5. Constrói a linha: {nome do emissor} - {código/ticker} - {taxa} - {vencimento} - {valor} - {código_cliente}
+        line = f"{emissor} - {ticker} - {taxa_str} - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
+        
+        message += line + "\n"
+
+    # 6. Adiciona o fechamento
+    message += "\nObrigado!"
+    
+    return message
+
+
+# ===================== SESSION STATE =====================
+if 'papeis' not in st.session_state:
+    # Inicializa com uma lista vazia
+    st.session_state['papeis'] = []
+if 'cdi_benchmark_geral' not in st.session_state:
+    st.session_state['cdi_benchmark_geral'] = TAXA_CDI_MERCADO
+    
+# ===================== LOGO + TÍTULO (Streamlit Display) =====================
+st.markdown(
+    f"""<div style="text-align: center; margin: 10px 0;">
+        <img src="{URL_LOGO_WHITE}" style="max-width: 400px; height: auto;">
+    </div>""",
+    unsafe_allow_html=True
+)
+st.markdown(f"<h3 style='text-align: center; color: {TEXTO_PRINCIPAL_ST};'>Calculadora de Simulação de Papéis Secundários</h3>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; font-size: 15px; margin-bottom: 20px;'>Adicione e gerencie os papéis diretamente na tabela abaixo para simular o resultado consolidado para o cliente.</p>", unsafe_allow_html=True)
+st.markdown("---")
+
+# ===================== DADOS GERAIS DA SIMULAÇÃO (LAYOUT REORGANIZADO) =====================
+st.subheader("Dados Gerais da Simulação", divider='gray')
+
+# LINHA 1: Nome do Cliente, Código do Cliente, Nome do Assessor
+col_nome, col_cod, col_assessor = st.columns(3)
+
+with col_nome:
+    nome_cliente = st.text_input("Nome do Cliente", "João Silva")
+
+with col_cod:
+    codigo_cliente = st.text_input("Código do Cliente", "")
+
+with col_assessor:
+    # --- ALTERAÇÃO SOLICITADA: st.selectbox para Assessores ---
+    nome_assessor = st.selectbox(
+        "Nome do Assessor (Obrigatório)", 
+        options=ASSESSORES_LISTA,
+        index=0 # Começa na opção de seleção
+    )
+    # --- FIM DA ALTERAÇÃO ---
+
+# LINHA 2: Data da Simulação, Data de Aplicação, Taxa CDI Anual (Benchmark)
+col_data_sim, col_data_app, col_cdi = st.columns(3)
+
+with col_data_sim:
+    data_simulacao = st.date_input("Data da Simulação", datetime.date.today(), format="DD/MM/YYYY")
+
+with col_data_app:
+    data_aplicacao = st.date_input("Data de Aplicação/Compra", datetime.date.today(), format="DD/MM/YYYY")
+
+with col_cdi:
+    st.number_input("Taxa CDI Anual (Benchmark) (%)", value=st.session_state['cdi_benchmark_geral'], step=0.05, key='cdi_benchmark_geral')
+    
+st.markdown("---")
+
+# ===================== TABELA DE PAPÉIS ADICIONADOS (Inclusão, Edição e Remoção pela Tabela) =====================
+st.subheader("Papéis Incluídos para Simulação", divider='gray')
+
+# Prepara o DataFrame para o editor
+if st.session_state.papeis:
+    df_papeis = pd.DataFrame(st.session_state.papeis)
+    df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
+    df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
+    df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
+else:
+    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Tipo', 'Taxa', 'Data Vencimento'])
+
+
+# Renomear colunas para exibição amigável
+df_papeis_edit = df_papeis.rename(columns={
+    'Emissor': 'Emissor',
+    'Ticker': 'Ticker',
+    'Valor': 'Valor Investido (R$)',
+    'Tipo': 'Tipo de Taxa',
+    'Taxa': 'Taxa (%)',
+    'Data Vencimento': 'Vencimento',
+})
+
+colunas_data_editor = ['Emissor', 'Ticker', 'Valor Investido (R$)', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
+
+st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
+
+edited_df = st.data_editor(
+    df_papeis_edit[colunas_data_editor],
+    hide_index=True,
+    num_rows="dynamic", # Inclusão na tabela
+    column_config={
+        "Valor Investido (R$)": st.column_config.NumberColumn(
+            "Valor Investido (R$)",
+            format="%.2f",
+            step=0.01,
+            min_value=0.01,
+        ),
+        "Tipo de Taxa": st.column_config.SelectboxColumn(
+            "Tipo de Taxa",
+            options=["Pré-fixado", "Pós-fixado (% do CDI)"],
+            required=True,
+        ),
+        "Taxa (%)": st.column_config.NumberColumn(
+            "Taxa (%)",
+            format="%.2f",
+            step=0.01,
+            min_value=0.01,
+        ),
+        "Vencimento": st.column_config.DateColumn(
+            "Vencimento",
+            format="DD/MM/YYYY",
+            min_value=datetime.date.today() + relativedelta(days=+1),
+        ),
+    },
+    key="data_editor_papeis"
+)
+
+# Processar as edições, adições e remoções do data_editor
+df_papeis_new = edited_df.rename(columns={
+    'Valor Investido (R$)': 'Valor',
+    'Tipo de Taxa': 'Tipo',
+    'Taxa (%)': 'Taxa',
+    'Vencimento': 'Data Vencimento',
+})
+
+# Remove linhas onde os valores essenciais não são válidos
+df_papeis_new = df_papeis_new[
+    (df_papeis_new['Valor'].astype(float) > 0) &
+    (df_papeis_new['Taxa'].astype(float) > 0) &
+    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
+]
+
+papeis_anteriores_len = len(st.session_state.papeis)
+st.session_state.papeis = df_papeis_new.to_dict('records')
+
+if papeis_anteriores_len != len(st.session_state.papeis):
+    # Recalcula e re-executa apenas se houver mudança nos dados
+    st.success("Tabela de papéis atualizada. Recalculando a simulação...")
+    st.rerun()
+
+# ===================== FERRAMENTAS DA TABELA (Limpar) =====================
+st.subheader("Ferramentas da Tabela", divider='gray')
+
+# Funções de ação (apenas a função de limpar permanece)
+def clear_papeis():
+    st.session_state.papeis = []
+    st.rerun()
+
+# Botão Limpar 
+if st.button("Limpar Todos os Papéis", use_container_width=True):
+    clear_papeis()
+    
+st.markdown("---")
+
+
+# ===================== CÁLCULOS CONSOLIDADOS =====================
+if not st.session_state.papeis:
+    st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
+    st.stop()
+    
+resultados_calculados = []
+papeis_para_grafico = []
+
+current_cdi_benchmark = st.session_state.cdi_benchmark_geral
+
+for papel in st.session_state.papeis:
+    try:
+        papel['Valor'] = float(papel['Valor'])
+        papel['Taxa'] = float(papel['Taxa'])
+    except (ValueError, TypeError):
+        continue # Ignora papéis com valores não numéricos
+        
+    resultado, erro = calcular_papel(papel, data_aplicacao, current_cdi_benchmark)
+    if resultado:
+        papel.update(resultado)
+        papeis_para_grafico.append(papel)
+        resultados_calculados.append(resultado)
+    elif erro:
+        st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
+
+if not resultados_calculados:
+    st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
+    st.stop()
+
+total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
+total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
+total_impostos = sum(r['Total Impostos'] for r in resultados_calculados)
+total_liquido = sum(r['Montante Líquido'] for r in resultados_calculados)
+rendimento_liquido_total = total_liquido - total_investido
+
+rentabilidade_efetiva = (rendimento_liquido_total / total_investido) * 100 if total_investido > 0 else 0.0
+
+st.subheader("Resultado Consolidado da Simulação", divider='gray')
+c1, c2, c3, c4 = st.columns(4)
+
+c1.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Total Investido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_investido)}</h4>", unsafe_allow_html=True)
+c2.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Bruto</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_bruto)}</h4>", unsafe_allow_html=True)
+c3.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Impostos (IR + IOF)</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_impostos)}</h4>", unsafe_allow_html=True)
+c4.markdown(f"<p style='font-size: 10px; margin-bottom: -15px;'>Montante Líquido</p><h4 style='color: {TEXTO_PRINCIPAL_ST};'>{brl(total_liquido)}</h4>", unsafe_allow_html=True)
+
+st.markdown(f"**Rendimento Líquido Total:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{brl(rendimento_liquido_total)}</span>", unsafe_allow_html=True)
+st.markdown(f"**Rentabilidade Líquida Efetiva:** <span style='color:{VERDE_DESTAQUE}; font-size: 1.1em;'>{rentabilidade_efetiva:.2f}%</span>", unsafe_allow_html=True)
+st.markdown("---")
 
 # ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
 def grafico_png():
+    # --- GRÁFICO: TIMELINE DE LIQUIDEZ ---
     df_pdf = pd.DataFrame(papeis_para_grafico)
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
     df_pdf = df_pdf.dropna(subset=['Data Vencimento'])
@@ -198,7 +450,6 @@ def grafico_png():
     df_timeline = df_timeline.sort_values(by='Data Ordenacao').drop(columns=['Data Ordenacao'])
     
     fig_pdf, ax_pdf = plt.subplots(figsize=(10, 5))
-    
     
     bar_container = ax_pdf.barh(
         df_timeline['Vencimento Formatado'],
@@ -221,7 +472,6 @@ def grafico_png():
             '  ' + valor_formatado, 
             va='center', 
             ha='left', 
-           
             fontsize=9,
             color='black',
             fontweight='bold'
@@ -241,7 +491,6 @@ def grafico_png():
     plt.tight_layout()
 
     buf = BytesIO()
-   
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
     buf.seek(0)
     plt.close(fig_pdf)
@@ -257,7 +506,7 @@ def criar_pdf_secundarios():
     story = []
     styles = getSampleStyleSheet()
     
-    # Estilos (condensados para brevidade)
+    # Estilos
     styles.add(ParagraphStyle(name='TitlePDF', fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=5*mm, textColor=colors.HexColor('#000000')))
     styles.add(ParagraphStyle(name='SectionTitle', fontSize=10, fontName='Helvetica-Bold', spaceBefore=5*mm, spaceAfter=3*mm, textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='DataLabel', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#666666'), alignment=0))
@@ -269,11 +518,9 @@ def criar_pdf_secundarios():
     styles.add(ParagraphStyle(name='TableHeaderPDF', fontSize=7, fontName='Helvetica-Bold', alignment=1, textColor=colors.HexColor('#333333')))
     styles.add(ParagraphStyle(name='TableCellPDF', fontSize=7, fontName='Helvetica', alignment=2))
 
-
     # 1. Cabeçalho
     logo = carregar_logo()
     logo.hAlign = 'CENTER'
- 
     story.append(Spacer(1, 3*mm))
     story.append(logo)
     story.append(Spacer(1, 3*mm))
@@ -282,14 +529,13 @@ def criar_pdf_secundarios():
     story.append(Paragraph("Projeção de Retorno com Múltiplos Emissores", getSampleStyleSheet()['Normal']))
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm))
 
-    # 2. Dados Gerais (usando as session_state keys)
+    # 2. Dados Gerais
     story.append(Paragraph("DADOS DA SIMULAÇÃO", styles['SectionTitle']))
     
     data_geral = [
-        [Paragraph("Cliente", styles['DataLabel']), Paragraph(st.session_state['nome_cliente'], styles['DataValue']),
-         Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(st.session_state['data_aplicacao'].strftime('%d/%m/%Y'), styles['DataValue'])],
-  
-        [Paragraph("Assessor", styles['DataLabel']), Paragraph(st.session_state['nome_assessor_selected_key'] if st.session_state['nome_assessor_selected_key'] else "N/A", styles['DataValue']),
+        [Paragraph("Cliente", styles['DataLabel']), Paragraph(nome_cliente, styles['DataValue']),
+         Paragraph("Data Aplic.", styles['DataLabel']), Paragraph(data_aplicacao.strftime('%d/%m/%Y'), styles['DataValue'])],
+        [Paragraph("Assessor", styles['DataLabel']), Paragraph(nome_assessor if nome_assessor else "N/A", styles['DataValue']),
          Paragraph("CDI Benchmark", styles['DataLabel']), Paragraph(f"{current_cdi_benchmark:.2f}% a.a.", styles['DataValue'])],
     ]
     total_width_pdf = A4[0] - 30*mm
@@ -301,9 +547,8 @@ def criar_pdf_secundarios():
     # 3. Tabela de Papéis (Resumo)
     story.append(Paragraph("RESUMO DOS PAPÉIS INCLUÍDOS", styles['SectionTitle']))
     
-    # Ticker renomeado para Código 
     data_tabela_papeis = [
-        [Paragraph("Emissor", styles['TableHeaderPDF']), Paragraph("Código", styles['TableHeaderPDF']), Paragraph("Valor Investido", styles['TableHeaderPDF']), Paragraph("Tipo", styles['TableHeaderPDF']), Paragraph("Taxa", styles['TableHeaderPDF']), Paragraph("Vencimento", styles['TableHeaderPDF']), Paragraph("Rendimento Líquido", styles['TableHeaderPDF'])]
+        [Paragraph("Emissor", styles['TableHeaderPDF']), Paragraph("Ticker", styles['TableHeaderPDF']), Paragraph("Valor Investido", styles['TableHeaderPDF']), Paragraph("Tipo", styles['TableHeaderPDF']), Paragraph("Taxa", styles['TableHeaderPDF']), Paragraph("Vencimento", styles['TableHeaderPDF']), Paragraph("Rendimento Líquido", styles['TableHeaderPDF'])]
     ]
     
     for p in papeis_para_grafico:
@@ -311,22 +556,20 @@ def criar_pdf_secundarios():
         if isinstance(vencimento_date, pd.Timestamp):
             vencimento_date = vencimento_date.date()
         elif isinstance(vencimento_date, str):
-          
             try:
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
-                vencimento_date = st.session_state.data_aplicacao
+                vencimento_date = datetime.date.today() 
         
         tipo_taxa_display = "Pós-fixado" if p['Tipo'] == 'Pós-fixado (% do CDI)' else p['Tipo']
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         
         data_tabela_papeis.append([
             Paragraph(p['Emissor'], styles['TableCellPDF']),
-            Paragraph(p['Ticker'], styles['TableCellPDF']), # Acesso pela chave interna 'Ticker'
+            Paragraph(p['Ticker'], styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Valor Investido']), styles['TableCellPDF']),
             Paragraph(tipo_taxa_display, styles['TableCellPDF']), 
             Paragraph(taxa_str, styles['TableCellPDF']),
-    
             Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Rendimento Líquido']), styles['TableCellPDF']),
         ])
@@ -337,7 +580,6 @@ def criar_pdf_secundarios():
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
         ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
-      
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
@@ -371,42 +613,47 @@ def criar_pdf_secundarios():
     ]))
     story.append(t_res_final)
     story.append(Spacer(1, 5*mm))
-
+    
     # 5. Fundamentos do CDB
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm))
     story.append(Paragraph("FUNDAMENTOS DO CDB", styles['SectionTitle']))
+    
     cdb_text = (
-        "O <b>CDB</b> (Certificado de Depósito Bancário) é um título de <b>renda fixa</b> emitido por bancos para captar recursos. "
-        "É considerado "
+        "O <b>CDB</b> (Certificado de Depósito Bancário) é um título de <b>renda fixa</b> emitido por bancos para captar recursos. É considerado "
         "um <b>investimento de baixo risco</b> e conta com a <b>garantia do FGC</b> (Fundo Garantidor de Créditos), que cobre até <b>R$ 250.000</b> "
-        "por CPF e por instituição financeira, oferecendo <b>segurança</b> ao investidor. "
-        "A rentabilidade pode ser <b>Pré-fixada</b> (taxa "
+        "por CPF e por instituição financeira, oferecendo <b>segurança</b> ao investidor. A rentabilidade pode ser <b>Pré-fixada</b> (taxa "
         "definida no início) ou <b>Pós-fixada</b> (geralmente atrelada a um percentual do CDI). "
-        "Em relação às características de resgate, a "
-        "Liquidez do CDB pode ser diária (ideal para reserva de emergência) ou apenas no vencimento (oferecendo historicamente "
-        "maior retorno). A tributação segue a tabela regressiva do Imposto de Renda (IR), onde o imposto diminui quanto maior o "
-        "prazo do investimento (chegando a 15% após 720 dias). O Imposto sobre Operações Financeiras (IOF) é isento para "
-        "resgates feitos após 30 dias."
+        "Em relação às características de resgate, a <b>Liquidez</b> do CDB pode ser diária (ideal para reserva de emergência) ou "
+        "apenas no vencimento (oferecendo historicamente maior retorno). A <b>tributação</b> segue a tabela regressiva do Imposto de "
+        "Renda (<b>IR</b>), onde o imposto diminui quanto maior o prazo do investimento (chegando a 15% após 720 dias). O Imposto "
+        "sobre Operações Financeiras (<b>IOF</b>) é isento para resgates feitos após 30 dias."
     )
     story.append(Paragraph(cdb_text, styles['CDBText']))
-    story.append(Spacer(1, 3*mm))
-
-    # 6. Gráfico Timeline (Page Break)
+    
     story.append(PageBreak())
     
-    # Insere o gráfico aqui
-    grafico_buf = grafico_png()
+    # 6. Gráfico - Timeline de Liquidez
     story.append(Paragraph("TIMELINE DE LIQUIDEZ: VALOR INVESTIDO POR VENCIMENTO", styles['SectionTitle']))
-    story.append(Image(grafico_buf, width=150*mm, height=75*mm, hAlign='CENTER'))
-    story.append(Spacer(1, 10*mm))
     
-    # 7. Tabela de Detalhe e Tributação
+    img = Image(grafico_png(), width=160*mm, height=100*mm)
+    img.hAlign = 'CENTER'
+    story.append(img)
+    
+    story.append(Spacer(1, 5*mm))
+
+    # --- NOVO BLOCO: TABELA DE DETALHAMENTO POR PAPEL ---
+    story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
     story.append(Paragraph("DETALHAMENTO POR PAPEL E TRIBUTAÇÃO", styles['SectionTitle']))
     
     data_tabela_detalhe = [
-        [Paragraph("Código", styles['TableHeaderPDF']), Paragraph("Vencimento", styles['TableHeaderPDF']), Paragraph("Montante Bruto", styles['TableHeaderPDF']), Paragraph("Alíquota IR", styles['TableHeaderPDF']), Paragraph("Imposto IR/IOF", styles['TableHeaderPDF']), Paragraph("Montante Líquido", styles['TableHeaderPDF'])]
+        [Paragraph("Papel", styles['TableHeaderPDF']),
+         Paragraph("Vencimento", styles['TableHeaderPDF']),
+         Paragraph("Montante Bruto", styles['TableHeaderPDF']),
+         Paragraph("Alíquota IR", styles['TableHeaderPDF']),
+         Paragraph("Imposto IR/IOF", styles['TableHeaderPDF']),
+         Paragraph("Montante Líquido", styles['TableHeaderPDF'])]
     ]
-    # Início do loop
+    
     for p in papeis_para_grafico:
         vencimento_date = p['Data Vencimento']
         if isinstance(vencimento_date, pd.Timestamp):
@@ -415,17 +662,17 @@ def criar_pdf_secundarios():
             try:
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
-                vencimento_date = st.session_state.data_aplicacao
-        
+                vencimento_date = datetime.date.today()
+            
         data_tabela_detalhe.append([
-            Paragraph(p['Ticker'], styles['TableCellPDF']), # Acesso pela chave interna 'Ticker'
+            Paragraph(p['Ticker'], styles['TableCellPDF']),
             Paragraph(vencimento_date.strftime('%d/%m/%Y'), styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Montante Bruto']), styles['TableCellPDF']),
             Paragraph(f"{p['Alíquota IR']:.1f}%", styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Total Impostos']), styles['TableCellPDF']),
             Paragraph(brl_pdf(p['Montante Líquido']), styles['TableCellPDF']),
         ])
-    
+
     colWidths_detalhe = [total_width_pdf*0.15, total_width_pdf*0.15, total_width_pdf*0.2, total_width_pdf*0.15, total_width_pdf*0.2, total_width_pdf*0.15]
     t_detalhe = Table(data_tabela_detalhe, colWidths=colWidths_detalhe)
     t_detalhe.setStyle(TableStyle([
@@ -440,319 +687,64 @@ def criar_pdf_secundarios():
     ]))
     story.append(t_detalhe)
     story.append(Spacer(1, 5*mm))
+    # --- FIM NOVO BLOCO ---
 
-    # --- FIM BLOCO ---
-    # 8. Rodapé e Disclaimer
+
+    # 7. Rodapé e Disclaimer
     story.append(HRFlowable(width="100%", thickness=0.5, lineCap='round', color=colors.lightgrey, spaceBefore=3*mm, spaceAfter=5*mm)) # Divisória
-    story.append(Paragraph(f"Simulação elaborada por <b>{st.session_state['nome_assessor_selected_key'] if st.session_state['nome_assessor_selected_key'] != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {st.session_state['data_simulacao'].strftime('%d/%m/%Y')}", styles['Footer']))
+    story.append(Paragraph(f"Simulação elaborada por <b>{nome_assessor if nome_assessor else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}", styles['Footer']))
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph("DISCLAIMER", styles['SectionTitle']))
-    disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes. "
-                       "Esta simulação não representa uma oferta de venda ou recomendação de investimento. Os produtos de Renda Fixa aqui apresentados "
-                       "possuem risco e rentabilidade variáveis. Consulte sempre seu assessor de investimentos para tomar decisões. "
-                       "A garantia do FGC de R$ 250.000 por CPF, por emissor e por instituição está sujeita às regras e limites atuais do FGC. "
-                       "A taxa CDI Benchmark é uma referência de mercado e não garante a taxa real em aplicações futuras. "
-                       "A rentabilidade histórica não garante rentabilidade futura.")
+    
+    disclaimer_text = ("As informações presentes neste Material Técnico são baseadas em simulações e os resultados reais poderão ser significativamente diferentes. Os valores de liquidez representam o Capital Inicial Investido (sem considerar a rentabilidade) que estará disponível na data de vencimento.")
     story.append(Paragraph(disclaimer_text, styles['Disclaimer']))
-    
+
+
     doc.build(story)
-    
+    buffer.seek(0)
     return buffer.getvalue()
 
 
-# ===================== INÍCIO DA APLICAÇÃO STREAMLIT =====================
+# ===================== BOTÃO PDF (Com validação do Assessor) =====================
+if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=True):
+    # VALIDAÇÃO DO CAMPO OBRIGATÓRIO (Nome do Assessor)
+    if nome_assessor == "Selecione um Assessor...":
+        st.error("O campo **Nome do Assessor** é obrigatório. Por favor, selecione um nome na lista para gerar a proposta.")
+    else:
+        with st.spinner("Gerando sua proposta premium consolidada..."):
+            try:
+                pdf_data = criar_pdf_secundarios()
+                b64 = base64.b64encode(pdf_data).decode()
+                nome_arq = f"Proposta_RendaFixa_{nome_cliente.replace(' ', '_')}.pdf"
+                href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}"><h3 style="text-align:center; color:white;">BAIXAR PROPOSTA CONSOLIDADA</h3></a>'
+                st.markdown(href, unsafe_allow_html=True)
+                st.success("Proposta premium gerada com sucesso! Clique no link acima para baixar.")
+            except Exception as e:
+                if "papéis válidos" in str(e):
+                    st.error("Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido na tabela (Valor > R$0, Taxa > 0% e Vencimento futuro).")
+                else:
+                    st.error(f"Ocorreu um erro inesperado ao gerar o PDF. Por favor, tente novamente. Detalhe técnico: {e}")
 
-# 1. Inicialização do Session State
-if 'papeis' not in st.session_state:
-    st.session_state.papeis = []
-if 'nome_cliente' not in st.session_state:
-    st.session_state.nome_cliente = "Cliente Exemplo"
-if 'codigo_cliente' not in st.session_state:
-    st.session_state.codigo_cliente = "000000"
-if 'data_simulacao' not in st.session_state:
-    st.session_state.data_simulacao = datetime.date.today()
-if 'data_aplicacao' not in st.session_state:
-    st.session_state.data_aplicacao = datetime.date.today()
-if 'cdi_benchmark_geral' not in st.session_state:
-    st.session_state.cdi_benchmark_geral = TAXA_CDI_MERCADO
-if 'nome_assessor_selected_key' not in st.session_state:
-    st.session_state.nome_assessor_selected_key = ASSESSORES_LISTA[0] # Selecione um Assessor...
+# ===================== MENSAGEM AUTOMÁTICA DE EXECUÇÃO (Com botão de cópia) =====================
+st.markdown("---")
+st.subheader("Mensagem Automática para Execução", divider='gray')
 
-# Exibição do Logo (para Streamlit)
-st.image(URL_LOGO_WHITE)
-
-st.title("Simulador de Renda Fixa FGC")
-st.markdown("Cálculo consolidado de impostos (IR/IOF) e rentabilidade líquida para múltiplos CDBs.")
-
-
-# ===================== DADOS GERAIS DA SIMULAÇÃO =====================
-with st.container(border=True):
-    st.subheader("Dados Gerais da Simulação", divider='gray')
+if papeis_para_grafico:
+    # Gera a mensagem formatada
+    execution_message = generate_execution_message(papeis_para_grafico, codigo_cliente)
     
-    # LINHA 1: Nome do Cliente, Código do Cliente, Nome do Assessor
-    col_nome, col_cod, col_assessor = st.columns(3)
-    with col_nome:
-        st.text_input("Nome do Cliente", key='nome_cliente')
-    with col_cod:
-        st.text_input("Código do Cliente", key='codigo_cliente')
-    with col_assessor:
-        nome_assessor = st.selectbox(
-            "Nome do Assessor (Obrigatório)",
-            options=ASSESSORES_LISTA,
-            key='nome_assessor_selected_key'
-        )
-        
-    # LINHA 2: Data da Simulação, Data de Aplicação, Taxa CDI Anual (Benchmark)
-    col_data_sim, col_data_app, col_cdi = st.columns(3)
-    with col_data_sim:
-        st.date_input("Data da Simulação", key='data_simulacao', format="DD/MM/YYYY")
-    with col_data_app:
-        st.date_input("Data de Aplicação/Compra", key='data_aplicacao', format="DD/MM/YYYY")
-    with col_cdi:
-        st.number_input("Taxa CDI Anual (Benchmark) (%)", step=0.05, key='cdi_benchmark_geral')
+    # st.code fornece o botão de cópia nativo
+    st.code(
+        execution_message,
+        language='markdown'
+    )
+    st.caption("Utilize o ícone **Copy** no canto superior direito para copiar a mensagem.")
     
-
-st.markdown("---") 
-
-# ===================== TABELA DE PAPÉIS ADICIONADOS =====================
-st.subheader("Papéis Incluídos para Simulação", divider='gray')
-
-# Prepara o DataFrame para o editor
-if st.session_state.papeis:
-    df_papeis = pd.DataFrame(st.session_state.papeis)
-    # Garante que 'Qtde' existe, ou usa 1.0 como padrão se for a primeira vez
-    if 'Qtde' not in df_papeis.columns:
-        df_papeis['Qtde'] = 1.0
-    df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
-    df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
-    df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) # Conversão de tipo
-    df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
-    # Adiciona 'Qtde' na criação do DataFrame vazio
-    df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
-
-# Renomear colunas para exibição amigável (Ticker -> Código)
-df_papeis_edit = df_papeis.rename(columns={
-    'Emissor': 'Emissor',
-    'Ticker': 'Código',
-    'Valor': 'Valor Investido (R$)',
-    'Qtde': 'Qtde.', # Mapeamento da Qtde
-    'Tipo': 'Tipo de Taxa',
-    'Taxa': 'Taxa (%)',
-    'Data Vencimento': 'Vencimento',
-})
-
-# ORDEM: Inclui 'Qtde.'
-colunas_data_editor = ['Emissor', 'Código', 'Valor Investido (R$)', 'Qtde.', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
-
-st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão `+` no rodapé da tabela.")
-
-
-column_config_papeis = {
-    "Emissor": st.column_config.SelectboxColumn(
-        "Emissor",
-        options=["BANCO NBC", "BANCO ORIGINAL S/A", "BTG PACTUAL", "CAIXA", "BRADESCO", "ITAU BBA", "SANTANDER"],
-        required=True
-    ),
-    "Código": st.column_config.TextColumn(
-        "Código",
-        help="Ticker/código de identificação do papel",
-        required=True
-    ),
-    "Valor Investido (R$)": st.column_config.NumberColumn(
-        "Valor Investido (R$)",
-        min_value=0.01,
-        format="R$ %.2f",
-        required=True
-    ),
-    "Qtde.": st.column_config.NumberColumn(
-        "Qtde.",
-        min_value=1,
-        step=1,
-        format="%d",
-        required=True
-    ),
-    "Tipo de Taxa": st.column_config.SelectboxColumn(
-        "Tipo de Taxa",
-        options=["Pré-fixado", "Pós-fixado (% do CDI)"],
-        required=True
-    ),
-    "Taxa (%)": st.column_config.NumberColumn(
-        "Taxa (%)",
-        min_value=0.01,
-        format="%.2f",
-        required=True
-    ),
-    "Vencimento": st.column_config.DateColumn(
-        "Vencimento",
-        min_value=datetime.date.today(),
-        format="DD/MM/YYYY",
-        required=True
-    ),
-}
-
-# FIM DA CONFIGURAÇÃO DO DATA EDITOR (retorna um DataFrame)
-edited_df = st.data_editor(
-    df_papeis_edit,
-    num_rows="dynamic",
-    column_config=column_config_papeis,
-    column_order=colunas_data_editor,
-    key="data_editor_papeis"
-)
-
-# =========================================================
-# BLOCO SUBSTITUTO SEGURO (MANTIDO)
-# Mantém a correção do loop de rerun e a coerção de tipos
-# =========================================================
-
-df_edited = edited_df
-papeis_anteriores = st.session_state.papeis.copy() # Copia a versão anterior para comparação
-
-# 1. Renomeia colunas de volta para chaves internas
-df_edited = df_edited.rename(columns={
-    'Código': 'Ticker',
-    'Valor Investido (R$)': 'Valor',
-    'Qtde.': 'Qtde',
-    'Tipo de Taxa': 'Tipo',
-    'Taxa (%)': 'Taxa',
-    'Vencimento': 'Data Vencimento',
-})
-
-# 2. Força tipos com tratamento de erro (errors='coerce')
-try:
-    df_clean = df_edited.copy()
-    
-    # Conversões forçadas (se falhar, vira NaN)
-    df_clean['Valor'] = pd.to_numeric(df_clean['Valor'], errors='coerce')
-    df_clean['Taxa'] = pd.to_numeric(df_clean['Taxa'], errors='coerce')
-    # Coerce + fillna(1) para garantir Qtde mínima de 1 se for NaN
-    df_clean['Qtde'] = pd.to_numeric(df_clean['Qtde'], errors='coerce').fillna(1)
-    df_clean['Data Vencimento'] = pd.to_datetime(df_clean['Data Vencimento'], errors='coerce')
-    
-    # 3. Remove linhas inválidas/corrompidas
-    df_clean = df_clean.dropna(subset=['Valor', 'Taxa', 'Data Vencimento'])
-    # Remove linhas com valores <= 0
-    df_clean = df_clean[(df_clean['Valor'] > 0) & (df_clean['Taxa'] > 0)]
-    
-    # 4. Tipos finais garantidos
-    df_clean['Valor'] = df_clean['Valor'].round(2).astype(float)
-    df_clean['Taxa'] = df_clean['Taxa'].round(4).astype(float) # Round(4) para precisão da taxa
-    df_clean['Qtde'] = df_clean['Qtde'].astype(int) 
-    df_clean['Data Vencimento'] = df_clean['Data Vencimento'].dt.date 
-    
-    new_papeis = df_clean.to_dict('records')
-    
-    # 5. Comparação Profunda antes do rerun (Conteúdo E Tamanho)
-    # Se o tamanho mudou OU se o conteúdo de algum papel mudou:
-    if len(new_papeis) != len(papeis_anteriores) or \
-       any(a != b for a, b in zip(new_papeis, papeis_anteriores)):
-        
-        st.session_state.papeis = new_papeis
-        st.success(f"Tabela atualizada: {len(new_papeis)} papel(is) válido(s). Recalculando a simulação...")
-        st.rerun()
-
-except Exception as e:
-    # 6. Tratamento de erro crítico (se a coerção falhar catastroficamente)
-    st.error(f"Erro crítico ao processar a tabela. Dados corrompidos foram descartados. Detalhe: {e}")
-    st.session_state.papeis = [] 
-    st.rerun()
-    
-# =========================================================
-
-st.markdown("---") 
-
-# ===================== CÁLCULOS CONSOLIDADOS =====================
-if not st.session_state.papeis:
-    st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
-    st.stop()
-
-resultados_calculados = []
-papeis_para_grafico = []
-current_cdi_benchmark = st.session_state.cdi_benchmark_geral
-
-for papel in st.session_state.papeis:
-    try:
-        papel_temp = papel.copy()
-        # Garantir os tipos esperados para o cálculo
-        papel_temp['Valor'] = float(papel_temp['Valor'])
-        papel_temp['Taxa'] = float(papel_temp['Taxa'])
-        papel_temp['Qtde'] = float(papel_temp.get('Qtde', 1.0)) 
-    except (ValueError, TypeError):
-        continue
-
-    resultado, erro = calcular_papel(papel_temp, st.session_state.data_aplicacao, current_cdi_benchmark)
-
-    if resultado:
-        papel_temp.update(resultado)
-        papeis_para_grafico.append(papel_temp)
-        resultados_calculados.append(resultado)
-    elif erro:
-        st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
-
-if not resultados_calculados:
-    st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
-    st.stop()
-
-total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
-total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
-total_impostos = sum(r['Total Impostos'] for r in resultados_calculados)
-total_liquido = sum(r['Montante Líquido'] for r in resultados_calculados)
-
-# Calculando a rentabilidade efetiva: (Rendimento Líquido / Total Investido) * 100
-rendimento_liquido_total = total_liquido - total_investido
-rentabilidade_efetiva = (rendimento_liquido_total / total_investido) * 100 if total_investido > 0 else 0.0
-
-
-# ===================== EXIBIÇÃO DE RESULTADOS =====================
-st.subheader("Resultados Consolidados", divider='green')
-
-col_1, col_2, col_3, col_4, col_5 = st.columns(5)
-
-with col_1:
-    st.metric("Total Investido", brl(total_investido))
-with col_2:
-    st.metric("Montante Bruto", brl(total_bruto))
-with col_3:
-    st.metric("Total Impostos (IR/IOF)", brl(total_impostos))
-with col_4:
-    st.metric("Montante Líquido", brl(total_liquido))
-with col_5:
-    st.metric("Rentabilidade Líquida Efetiva", f"{rentabilidade_efetiva:.2f}%")
-
-
-st.markdown("---") 
-
-# ===================== GERAÇÃO E DOWNLOAD DO PDF =====================
-st.subheader("Gerar Proposta Consolidada em PDF", divider='gray')
-
-if st.session_state['nome_assessor_selected_key'] == ASSESSORES_LISTA[0] or not st.session_state['nome_cliente']:
-    st.warning("Preencha o **Nome do Cliente** e selecione o **Nome do Assessor** nos 'Dados Gerais da Simulação' para gerar a proposta.")
-else:
-    with st.spinner("Gerando sua proposta premium consolidada..."):
-        try:
-            # 1. GERAR PDF
-            pdf_data = criar_pdf_secundarios()
-            b64 = base64.b64encode(pdf_data).decode()
-            nome_arq = f"Proposta_RendaFixa_{st.session_state['nome_cliente'].replace(' ', '_')}.pdf"
-            
-            # Botão de download simples (sem referência a ID de simulação)
-            href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}" class="stButton" style="text-decoration:none;"><button data-testid="baseButton-primary" style="width:100%;">BAIXAR PROPOSTA CONSOLIDADA</button></a>'
-            
-            st.markdown(href, unsafe_allow_html=True)
-            st.success("Proposta premium gerada com sucesso! Clique no botão acima para baixar.")
-            
-        except Exception as e:
-            # Tratamento de erro
-            if "papéis válidos" in str(e):
-                st.error("Ocorreu um erro ao gerar o PDF. Adicione pelo menos um papel válido na tabela (Valor > R$0, Taxa > 0% e Vencimento futuro).")
-            else:
-                # Em caso de erro desconhecido, mostra a mensagem genérica
-                st.error(f"Ocorreu um erro inesperado ao gerar o PDF. Por favor, tente novamente. Detalhe técnico: {e}")
-
-# Removidos: Mensagem Automática de Execução e Consulta CSV.
+    st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
-    f"""<p style='text-align:center; margin-top:40px; color:#666;'>Simulação elaborada por <b>{st.session_state['nome_assessor_selected_key'] if st.session_state['nome_assessor_selected_key'] != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {st.session_state['data_simulacao'].strftime('%d/%m/%Y')}</p>""",
+    f"<p style='text-align:center; margin-top:40px;'>Simulação elaborada por <b>{nome_assessor if nome_assessor != 'Selecione um Assessor...' else 'Assessor não informado'}</b> em {data_simulacao.strftime('%d/%m/%Y')}</p>",
     unsafe_allow_html=True
 )
