@@ -681,20 +681,10 @@ if st.session_state.papeis:
     # Garante que 'Qtde' existe, ou usa 1.0 como padrão se for a primeira vez
     if 'Qtde' not in df_papeis.columns:
         df_papeis['Qtde'] = 1.0
-    # COERÇÃO INICIAL DE TIPO PARA GARANTIR QUE DATAS E FLUTUANTES ESTEJAM NO FORMATO CORRETO ANTES DO data_editor
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
-    # Use to_numeric com erros='coerce' e fillna(0) para limpar antes de arredondar, se necessário, ou confie no data_editor para manter o formato
-    # Aqui, apenas garantimos a conversão para float para evitar erros em session_state data types
-    try:
-        df_papeis['Valor'] = pd.to_numeric(df_papeis['Valor'], errors='coerce').fillna(0.0).round(2)
-        df_papeis['Qtde'] = pd.to_numeric(df_papeis['Qtde'], errors='coerce').fillna(1.0).round(2) 
-        df_papeis['Taxa'] = pd.to_numeric(df_papeis['Taxa'], errors='coerce').fillna(0.0).round(2)
-    except:
-        # fallback para astype(float) se pd.to_numeric não for necessário
-        df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
-        df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) 
-        df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
-        
+    df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
+    df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) # Conversão de tipo
+    df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
     # Adiciona 'Qtde' na criação do DataFrame vazio
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
@@ -765,18 +755,10 @@ df_papeis_new = edited_df.rename(columns={
     'Vencimento': 'Data Vencimento',
 })
 
-# ============== INÍCIO DA CORREÇÃO DO VALUER ERROR ==============
-numeric_cols = ['Valor', 'Qtde', 'Taxa']
-for col in numeric_cols:
-    # Coerce any non-numeric/empty value (like an empty string from a new row) to NaN, then fill NaN with 0.0
-    df_papeis_new[col] = pd.to_numeric(df_papeis_new[col], errors='coerce').fillna(0.0)
-# ============== FIM DA CORREÇÃO DO VALUER ERROR ==============
-
-
-# Remove linhas onde os valores essenciais não são válidos (Valores financeiros > 0)
+# Remove linhas onde os valores essenciais não são válidos
 df_papeis_new = df_papeis_new[
-    (df_papeis_new['Valor'].astype(float) > 0) & # Isso agora é seguro pois NaN/vazio é 0.0
-    (df_papeis_new['Taxa'].astype(float) > 0) & # Isso agora é seguro pois NaN/vazio é 0.0
+    (df_papeis_new['Valor'].astype(float) > 0) &
+    (df_papeis_new['Taxa'].astype(float) > 0) &
     (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
 ]
 
@@ -869,6 +851,9 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 st.markdown(href, unsafe_allow_html=True)
                 
                 st.success(f"Proposta com ID **{sim_id}** salva no CSV e PDF gerado com sucesso! Clique no link acima para baixar.")
+                
+                # Força a atualização (mantendo a correção para evitar o erro anterior)
+                st.rerun() 
             
             except Exception as e:
                 if "papéis válidos" in str(e):
@@ -891,6 +876,13 @@ if papeis_para_grafico:
     
 else:
     st.info("Adicione papéis válidos na tabela de 'Papéis Incluídos para Simulação' para gerar a mensagem de execução automática.")
+
+# ===================== VERIFICAÇÃO E GESTÃO DE PROPOSTAS SALVAS (REMOVIDA DA VISUALIZAÇÃO) =====================
+# A SEÇÃO ABAIXO FOI REMOVIDA PARA ATENDER AO SEU PEDIDO:
+
+# st.markdown("---")
+# st.subheader("Consulta e Verificação de Propostas Salvas", divider='gray')
+# display_csv_content() 
 
 # ===================== RODAPÉ STREAMLIT =====================
 st.markdown(
