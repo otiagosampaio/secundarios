@@ -681,24 +681,34 @@ df_papeis_new = edited_df.rename(columns={
 })
 
 # =========================================================
-# FLUXO DE LIMPEZA E FILTRAGEM
+# FLUXO DE LIMPEZA E FILTRAGEM (REFORÇADO)
 # =========================================================
 
-# 1. GARANTIR QUE DATA É UM OBJETO DE DATA
+# 1. GARANTIR QUE DATA É UM OBJETO DE DATA (Coerção)
+# Se houver lixo de dados, torna-se NaT (Not a Time)
 df_papeis_new['Data Vencimento'] = pd.to_datetime(df_papeis_new['Data Vencimento'], errors='coerce').dt.date
 
 # 2. COERCE TIPOS NUMÉRICOS NOVAMENTE (segurança)
 numeric_cols = ['Valor', 'Qtde', 'Taxa']
 for col in numeric_cols:
-    df_papeis_new[col] = pd.to_numeric(df_papeis_new[col], errors='coerce').fillna(0.0)
+    # 🌟 CORREÇÃO REFORÇADA: Força para numérico, transformando erros em NaN
+    df_papeis_new[col] = pd.to_numeric(df_papeis_new[col], errors='coerce') 
 
+# 3. FILTRAGEM: Remove linhas onde a data ou os valores essenciais são inválidos (NaN/NaT)
+# Remove linhas com data inválida OU onde valores numéricos críticos se tornaram NaN após a coerção
+df_papeis_new = df_papeis_new.dropna(subset=['Data Vencimento', 'Valor', 'Qtde', 'Taxa'])
 
-# 3. FILTRAGEM: Remove linhas inválidas antes de enviar para session_state
-df_papeis_new = df_papeis_new.dropna(subset=['Data Vencimento'])
+# 4. FILTRAGEM DE VALOR: Remove linhas onde os valores são zero ou negativos
 df_papeis_new = df_papeis_new[
     (df_papeis_new['Valor'] > 0) & 
-    (df_papeis_new['Taxa'] > 0)
+    (df_papeis_new['Taxa'] > 0) &
+    (df_papeis_new['Qtde'] > 0) # Adiciona verificação de Qtde > 0
 ]
+
+# 5. CONVERSÃO DE VOLTA: Após a limpeza, converte os nulos filtrados para float (para evitar erros posteriores)
+for col in numeric_cols:
+     df_papeis_new[col] = df_papeis_new[col].astype(float).round(2)
+
 
 papeis_anteriores_len = len(st.session_state.papeis)
 st.session_state.papeis = df_papeis_new.to_dict('records')
