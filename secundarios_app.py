@@ -107,11 +107,13 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     taxa_input = papel['Taxa']
 
     # --- 1. VALIDAÇÃO E PRAZO ---
-    # Garantir que data_vencimento é um objeto date
+    
+    # Garante que data_vencimento é um objeto date
     if isinstance(data_vencimento, pd.Timestamp):
         data_vencimento = data_vencimento.date()
     elif isinstance(data_vencimento, str):
         try:
+            # Tenta converter se ainda for string (fallback)
             data_vencimento = datetime.datetime.strptime(data_vencimento, '%Y-%m-%d').date()
         except ValueError:
             try:
@@ -121,14 +123,20 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     elif not isinstance(data_vencimento, datetime.date):
          return None, f"Data de Vencimento inválida ou ausente para {papel.get('Ticker', 'novo papel')}"
 
-
     # Prazo (diferença entre a data de vencimento e a data de aplicação)
+    
+    # A data_aplicacao já é garantida como datetime.date pelo st.date_input, mas checamos por segurança
+    if isinstance(data_aplicacao, pd.Timestamp):
+        data_aplicacao = data_aplicacao.date()
+
     prazo_dias = (data_vencimento - data_aplicacao).days
     
     # Validação crítica para o erro de 'sumir tudo'
-    if prazo_dias <= 0 or valor_investido <= 0 or taxa_input <= 0:
-        # Erro comum: Prazo Dias <= 0 se Vencimento não for futuro em relação à Data de Aplicação
-        return None, f"Dados inválidos para {papel.get('Ticker', 'novo papel')}. (Prazo: {prazo_dias} dias)"
+    if valor_investido <= 0 or taxa_input <= 0:
+        return None, f"Valor (R${valor_investido:.2f}) ou Taxa ({taxa_input:.2f}%) inválidos (devem ser > 0)."
+
+    if prazo_dias <= 0:
+        return None, f"Vencimento ({data_vencimento.strftime('%d/%m/%Y')}) não é futuro em relação à aplicação ({data_aplicacao.strftime('%d/%m/%Y')}). Prazo: {prazo_dias} dias."
     
     # Constante de cálculo financeiro (360 dias)
     dias_ano = 360
@@ -570,6 +578,7 @@ with col_data_sim:
     st.date_input("Data da Simulação", key='data_simulacao', format="DD/MM/YYYY")
 
 with col_data_app:
+    # DATA DE APLICAÇÃO PADRÃO É HOJE. A DATA DE VENCIMENTO PRECISA SER SEMPRE MAIOR QUE ELA.
     st.date_input("Data de Aplicação/Compra", key='data_aplicacao', format="DD/MM/YYYY")
 
 with col_cdi:
@@ -587,7 +596,7 @@ if st.session_state.papeis:
     if 'Qtde' not in df_papeis.columns:
         df_papeis['Qtde'] = 1.0
         
-    # COERÇÃO INICIAL DE TIPO (necessária antes de arredondar/filtrar)
+    # COERÇÃO INICIAL DE TIPO
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
     
     # As colunas abaixo serão limpas e convertidas novamente após o data_editor
@@ -672,25 +681,20 @@ df_papeis_new = edited_df.rename(columns={
 })
 
 # =========================================================
-# CORREÇÃO CRÍTICA 1: GARANTIR QUE DATA É UM OBJETO DE DATA
-# O data_editor pode retornar string ou timestamp, precisamos de um objeto date limpo.
+# FLUXO DE LIMPEZA E FILTRAGEM
 # =========================================================
+
+# 1. GARANTIR QUE DATA É UM OBJETO DE DATA
 df_papeis_new['Data Vencimento'] = pd.to_datetime(df_papeis_new['Data Vencimento'], errors='coerce').dt.date
 
-# COERCE TIPOS NUMÉRICOS NOVAMENTE (segurança)
+# 2. COERCE TIPOS NUMÉRICOS NOVAMENTE (segurança)
 numeric_cols = ['Valor', 'Qtde', 'Taxa']
 for col in numeric_cols:
     df_papeis_new[col] = pd.to_numeric(df_papeis_new[col], errors='coerce').fillna(0.0)
 
 
-# =========================================================
-# FILTRAGEM: Remove linhas inválidas
-# =========================================================
-
-# 1. Remove linhas onde a Data Vencimento não foi informada ou é inválida (NaT/None)
+# 3. FILTRAGEM: Remove linhas inválidas antes de enviar para session_state
 df_papeis_new = df_papeis_new.dropna(subset=['Data Vencimento'])
-
-# 2. Remove linhas onde os valores essenciais não são válidos (Valores financeiros > 0)
 df_papeis_new = df_papeis_new[
     (df_papeis_new['Valor'] > 0) & 
     (df_papeis_new['Taxa'] > 0)
@@ -731,7 +735,8 @@ for papel in st.session_state.papeis:
             papeis_para_grafico.append(papel_temp)
             resultados_calculados.append(resultado)
         elif erro:
-            st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
+            # 🌟 MENSAGEM DE ERRO DETALHADA AQUI
+            st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **Motivo: {erro}**")
             
     except Exception as e:
         # Captura qualquer erro de conversão remanescente e continua
@@ -740,7 +745,7 @@ for papel in st.session_state.papeis:
         
 
 if not resultados_calculados:
-    st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
+    st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento posterior à Data de Aplicação).")
     st.stop()
 
 # CÁLCULOS FINAIS
