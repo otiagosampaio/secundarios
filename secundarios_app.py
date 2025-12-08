@@ -103,8 +103,7 @@ brl = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", 
 brl_pdf = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ===================== CÁLCULO FINANCEIRO =====================
-def calcular_papel(papel, 
-data_aplicacao, taxa_cdi_benchmark):
+def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     valor_investido = papel['Valor']
     data_vencimento = papel['Data Vencimento']
     tipo = papel['Tipo']
@@ -134,8 +133,8 @@ data_aplicacao, taxa_cdi_benchmark):
     
     # --- 2. TAXA REAL ---
     taxa_anual_real = taxa_input
-    if tipo == "Pós-fixado (% do 
-CDI)":
+    # CORRIGIDO: String literal "Pós-fixado (% do CDI)" estava quebrada
+    if tipo == "Pós-fixado (% do CDI)": 
         taxa_anual_real = taxa_cdi_benchmark * (taxa_input / 100)
     
     # Converte taxa anual (%) para fator diário
@@ -150,8 +149,8 @@ CDI)":
     rendimento_apos_iof = rendimento_bruto
     imposto_iof = 0.0
     
-    if 
-    prazo_dias < 30:
+    # CORRIGIDO: if prazo_dias < 30: estava quebrado em duas linhas
+    if prazo_dias < 30:
         iof_tab = [0.96,0.93,0.90,0.86,0.83,0.80,0.76,0.73,0.70,0.66,0.63,0.60,0.56,0.53,0.50,
                  0.46,0.43,0.40,0.36,0.33,0.30,0.26,0.23,0.20,0.16,0.13,0.10,0.06,0.03,0.00]
         
@@ -161,7 +160,7 @@ CDI)":
         imposto_iof = rendimento_bruto * aliquota_iof
         rendimento_apos_iof = rendimento_bruto - imposto_iof
 
-    # --- 5. CÁLCULO IR 
+    # --- 5. CÁLCULO IR ---
     aliquota_ir = 22.5 if prazo_dias <= 180 else 20.0 if prazo_dias <= 360 else 17.5 if prazo_dias <= 720 else 15.0
     
     imposto_ir = rendimento_apos_iof * (aliquota_ir/100)
@@ -173,7 +172,6 @@ CDI)":
     
     resultado = {
         'Valor Investido': round(valor_investido, 2),
-    
         'Montante Bruto': round(montante_bruto, 2),
         'Rendimento Bruto': round(rendimento_bruto, 2),
         'Imposto IOF': round(imposto_iof, 2),
@@ -183,7 +181,6 @@ CDI)":
         'Montante Líquido': round(montante_liquido, 2),
         'Rendimento Líquido': round(rendimento_liquido, 2),
         'Prazo Dias': prazo_dias,
-       
         'Taxa Anual Real': round(taxa_anual_real, 4),
     }
 
@@ -207,7 +204,6 @@ def generate_execution_message(papeis, codigo_cliente):
         vencimento_date = p.get('Data Vencimento')
 
         # 2. Formata Taxa
-     
         if tipo == 'Pré-fixado':
             taxa_str = f"{taxa_input:.2f}% a.a."
         elif tipo == 'Pós-fixado (% do CDI)':
@@ -220,7 +216,6 @@ def generate_execution_message(papeis, codigo_cliente):
         if isinstance(vencimento_date, datetime.date):
             vencimento_str = vencimento_date.strftime('%d/%m/%Y')
         elif isinstance(vencimento_date, pd.Timestamp):
- 
             vencimento_str = vencimento_date.date().strftime('%d/%m/%Y')
         elif isinstance(vencimento_date, str):
             try:
@@ -306,7 +301,6 @@ def save_proposal_to_csv(papeis_para_grafico, nome_assessor, nome_cliente, codig
         df_new_data.to_csv(CSV_FILE, 
                            mode='a',
                            header=is_new_file, 
-     
                            index=False, 
                            sep=';', 
                            decimal='.') 
@@ -336,15 +330,13 @@ def display_csv_content():
         st.subheader(f"Conteúdo Atual do Arquivo {CSV_FILE}", divider='gray')
         
         if df_propostas.empty:
- 
             st.warning(f"O arquivo '{CSV_FILE}' existe, mas não contém propostas salvas.")
             return False
             
         st.info(f"Total de **{len(df_propostas)}** registros de papéis salvos em **{len(df_propostas['codigo_simulacao'].unique())}** propostas.")
         
         # Usa um st.expander para não poluir a interface, mas manter acessível
-        with st.expander("Clique para visualizar 
-        todos os dados salvos"):
+        with st.expander("Clique para visualizar todos os dados salvos"):
             st.dataframe(df_propostas[colunas_identificacao + [c for c in df_propostas.columns if c not in colunas_identificacao]], use_container_width=True)
             
         return True
@@ -353,8 +345,7 @@ def display_csv_content():
         st.warning(f"O arquivo '{CSV_FILE}' existe, mas está vazio.")
         return False
     except Exception as e:
-        st.error(f"Erro ao carregar o CSV 
-        para verificação: {e}")
+        st.error(f"Erro ao carregar o CSV para verificação: {e}")
         return False
 
 # ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
@@ -384,8 +375,8 @@ def grafico_png():
     
     for bar in bar_container:
         width = bar.get_width()
-        valor_formatado = f'R$ {width:,.0f}'.replace(",", 
-        "X").replace(".", ",").replace("X", ".")
+        # CORRIGIDO: String formatada quebrada
+        valor_formatado = f'R$ {width:,.0f}'.replace(",", "X").replace(".", ",").replace("X", ".")
         
         ax_pdf.text(
             width, 
@@ -430,12 +421,10 @@ def criar_pdf_secundarios():
     styles = getSampleStyleSheet()
     
     # Estilos (condensados para brevidade)
-    styles.add(ParagraphStyle(name='TitlePDF', 
-    fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=5*mm, textColor=colors.HexColor('#000000')))
+    styles.add(ParagraphStyle(name='TitlePDF', fontSize=18, fontName='Helvetica-Bold', alignment=1, spaceAfter=5*mm, textColor=colors.HexColor('#000000')))
     styles.add(ParagraphStyle(name='SectionTitle', fontSize=10, fontName='Helvetica-Bold', spaceBefore=5*mm, spaceAfter=3*mm, textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='DataLabel', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#666666'), alignment=0))
-    styles.add(ParagraphStyle(name='DataValue', fontSize=11, 
-    fontName='Helvetica-Bold', textColor=colors.HexColor('#333333'), alignment=0))
+    styles.add(ParagraphStyle(name='DataValue', fontSize=11, fontName='Helvetica-Bold', textColor=colors.HexColor('#333333'), alignment=0))
     styles.add(ParagraphStyle(name='Footer', fontSize=9, alignment=1, textColor=colors.HexColor('#666666')))
     styles.add(ParagraphStyle(name='Disclaimer', fontSize=7, fontName='Helvetica-Oblique', alignment=4, textColor=colors.HexColor('#666666'), spaceBefore=3*mm, spaceAfter=0*mm))
     styles.add(ParagraphStyle(name='CDBText', fontSize=9, fontName='Helvetica', textColor=colors.HexColor('#333333'), spaceAfter=5*mm))
@@ -492,8 +481,8 @@ def criar_pdf_secundarios():
                 vencimento_date = st.session_state.data_aplicacao
         
         tipo_taxa_display = "Pós-fixado" if p['Tipo'] == 'Pós-fixado (% do CDI)' else p['Tipo']
-        taxa_str = f"{p['Taxa']:.2f}% a.a."
-        if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
+        # CORRIGIDO: if quebrado no else
+        taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
         
         data_tabela_papeis.append([
             Paragraph(p['Emissor'], styles['TableCellPDF']),
@@ -512,7 +501,6 @@ def criar_pdf_secundarios():
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
         ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
-      
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
@@ -523,10 +511,9 @@ def criar_pdf_secundarios():
     story.append(Spacer(1, 5*mm))
 
     # 4. Resultado Consolidado (Tabela Azul)
-    
+    # CORRIGIDO: String literal quebrada
     resultado_completo = [
-        [Paragraph("<b>RESULTADO 
-        CONSOLIDADO</b>", styles['ResultTitleLarge']), "", "", ""],
+        [Paragraph("<b>RESULTADO CONSOLIDADO</b>", styles['ResultTitleLarge']), "", "", ""],
         ["TOTAL INVESTIDO", "MONTANTE BRUTO", "TOTAL IMPOSTOS", "MONTANTE LÍQUIDO"],
         [brl_pdf(total_investido), brl_pdf(total_bruto), brl_pdf(total_impostos), brl_pdf(total_liquido)],
         [Paragraph(f"Rentabilidade Líquida Efetiva: <font size='10' color='white'><b>{rentabilidade_efetiva:.2f}%</b></font>", styles['ResultTitleLarge']), "", "", ""],
