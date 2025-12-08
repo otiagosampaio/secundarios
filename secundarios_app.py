@@ -721,6 +721,7 @@ st.markdown("---")
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 if not st.session_state.papeis:
+    # Se a tabela está vazia (ou todos foram filtrados por serem inválidos), para a execução
     st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
     st.stop()
     
@@ -755,7 +756,9 @@ for papel in st.session_state.papeis:
         
 
 if not resultados_calculados:
+    # Se todos os papéis foram filtrados ou causaram erro, NADA DEVE APARECER ABAIXO DESTE PONTO.
     st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento posterior à Data de Aplicação).")
+    # Este é o st.stop() final que impede o restante da UI de carregar se não houver dados.
     st.stop()
 
 # CÁLCULOS FINAIS
