@@ -222,9 +222,7 @@ def generate_execution_message(papeis, codigo_cliente):
         valor_str = brl(valor).replace("R$ ", "") 
 
         # 5. Formata Qtde e Constrói a linha (usando 'codigo')
-        # Garante que a Qtde seja mostrada sem casas decimais se for um inteiro
-        qtde_float = float(qtde)
-        qtde_str = f"{int(qtde_float)}" if qtde_float == int(qtde_float) else f"{qtde_float:.2f}"
+        qtde_str = f"{int(qtde)}" if float(qtde).is_integer() else f"{qtde:.2f}"
         
         # Inclusão da Qtde após a taxa (taxa_str)
         line = f"{emissor} - {codigo} - {taxa_str} - {qtde_str} Qtde - {vencimento_str} - R$ {valor_str} - {codigo_cliente}"
@@ -320,13 +318,13 @@ df_papeis_edit = df_papeis.rename(columns={
     'Emissor': 'Emissor',
     'Ticker': 'Código',
     'Valor': 'Valor Investido (R$)',
-    'Qtde': 'Qtde.', # Mapeamento da Qtde
+    'Qtde': 'Qtde.', # NOVO: Mapeamento da Qtde
     'Tipo': 'Tipo de Taxa',
     'Taxa': 'Taxa (%)',
     'Data Vencimento': 'Vencimento',
 })
 
-# ORDEM: Inclui 'Qtde.' após 'Valor Investido (R$)'
+# NOVO ORDEM: Inclui 'Qtde.' após 'Valor Investido (R$)'
 colunas_data_editor = ['Emissor', 'Código', 'Valor Investido (R$)', 'Qtde.', 'Tipo de Taxa', 'Taxa (%)', 'Vencimento']
 
 st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão **+ Adicionar linha** na parte inferior da tabela.")
@@ -342,7 +340,7 @@ edited_df = st.data_editor(
             step=0.01,
             min_value=0.01,
         ),
-        "Qtde.": st.column_config.NumberColumn( # Configuração da Qtde
+        "Qtde.": st.column_config.NumberColumn( # NOVO: Configuração da Qtde
             "Qtde.",
             format="%.0f",
             step=1,
@@ -374,7 +372,7 @@ edited_df = st.data_editor(
 df_papeis_new = edited_df.rename(columns={
     'Código': 'Ticker', 
     'Valor Investido (R$)': 'Valor',
-    'Qtde.': 'Qtde', # Mapeamento de volta para chave interna
+    'Qtde.': 'Qtde', # NOVO: Mapeamento de volta para chave interna
     'Tipo de Taxa': 'Tipo',
     'Taxa (%)': 'Taxa',
     'Vencimento': 'Data Vencimento',
@@ -394,9 +392,17 @@ if papeis_anteriores_len != len(st.session_state.papeis):
     st.success("Tabela de papéis atualizada. Recalculando a simulação...")
     st.rerun()
 
-# A seção "Ferramentas da Tabela" foi removida aqui.
+# ===================== FERRAMENTAS DA TABELA (Limpar) =====================
+st.subheader("Ferramentas da Tabela", divider='gray')
+
+def clear_papeis():
+    st.session_state.papeis = []
+    st.rerun()
+
+if st.button("Limpar Todos os Papéis", use_container_width=True):
+    clear_papeis()
     
-st.markdown("---") # Mantém a linha de separação antes dos cálculos
+st.markdown("---")
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 if not st.session_state.papeis:
