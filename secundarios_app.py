@@ -252,9 +252,20 @@ def generate_execution_message(papeis, codigo_cliente):
 
 # ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
 def grafico_png():
+    # Garante que a lista não está vazia antes de tentar criar o DataFrame
+    if not papeis_para_grafico:
+        # Retorna um buffer vazio se não houver dados válidos
+        buf = BytesIO()
+        return buf
+
     df_pdf = pd.DataFrame(papeis_para_grafico)
     df_pdf['Data Vencimento'] = pd.to_datetime(df_pdf['Data Vencimento'], errors='coerce')
     df_pdf = df_pdf.dropna(subset=['Data Vencimento'])
+    
+    if df_pdf.empty:
+        buf = BytesIO()
+        return buf
+
     df_pdf['Vencimento Formatado'] = df_pdf['Data Vencimento'].dt.strftime('%m/%Y')
     
     df_timeline = df_pdf.groupby('Vencimento Formatado')['Valor Investido'].sum().reset_index()
@@ -589,29 +600,34 @@ st.markdown("---")
 # ===================== TABELA DE PAPÉIS ADICIONADOS =====================
 st.subheader("Papéis Incluídos para Simulação", divider='gray')
 
-# Prepara o DataFrame para o editor
-if st.session_state.papeis:
-    df_papeis = pd.DataFrame(st.session_state.papeis)
-    # Garante que 'Qtde' existe
-    if 'Qtde' not in df_papeis.columns:
-        df_papeis['Qtde'] = 1.0
+# 🌟 CORREÇÃO FINAL: Criação Segura do DataFrame (Coerção e Limpeza Inicial)
+try:
+    if st.session_state.papeis:
+        df_papeis = pd.DataFrame(st.session_state.papeis)
         
-    # COERÇÃO INICIAL DE TIPO
-    df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
-    
-    # As colunas abaixo serão limpas e convertidas novamente após o data_editor
-    try:
-        df_papeis['Valor'] = pd.to_numeric(df_papeis['Valor'], errors='coerce').fillna(0.0).round(2)
-        df_papeis['Qtde'] = pd.to_numeric(df_papeis['Qtde'], errors='coerce').fillna(1.0).round(2) 
-        df_papeis['Taxa'] = pd.to_numeric(df_papeis['Taxa'], errors='coerce').fillna(0.0).round(2)
-    except:
-        # fallback
-        df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
-        df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) 
-        df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
+        # Garante que as colunas críticas existem e tenta converter, forçando erros para NaN/NaT
+        df_papeis['Qtde'] = pd.to_numeric(df_papeis.get('Qtde', 1.0), errors='coerce').fillna(1.0).round(0)
+        df_papeis['Valor'] = pd.to_numeric(df_papeis.get('Valor', 0.0), errors='coerce').fillna(0.0).round(2)
+        df_papeis['Taxa'] = pd.to_numeric(df_papeis.get('Taxa', 0.0), errors='coerce').fillna(0.0).round(2)
+        df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis.get('Data Vencimento', None), errors='coerce').dt.date
         
-else:
-    # Adiciona 'Qtde' na criação do DataFrame vazio
+        # Filtra linhas onde as conversões falharam e resultaram em NaN/NaT
+        df_papeis = df_papeis.dropna(subset=['Valor', 'Taxa', 'Qtde', 'Data Vencimento'])
+        
+        # Remove a linha se o valor ou taxa for zero (já que o data_editor aceita 0, mas o cálculo não)
+        df_papeis = df_papeis[
+            (df_papeis['Valor'] > 0) & 
+            (df_papeis['Taxa'] > 0) &
+            (df_papeis['Qtde'] > 0)
+        ]
+
+    else:
+        df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
+
+except Exception as e:
+    # Em caso de erro inesperado na inicialização, reinicia a lista
+    st.warning(f"Erro de coerção de dados inicial. Reiniciando lista de papéis: {e}")
+    st.session_state['papeis'] = []
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
 
 
@@ -681,34 +697,31 @@ df_papeis_new = edited_df.rename(columns={
 })
 
 # =========================================================
-# FLUXO DE LIMPEZA E FILTRAGEM (REFORÇADO)
+# FLUXO DE LIMPEZA E FILTRAGEM (REFORÇADO APÓS EDIÇÃO)
 # =========================================================
 
 # 1. GARANTIR QUE DATA É UM OBJETO DE DATA (Coerção)
-# Se houver lixo de dados, torna-se NaT (Not a Time)
 df_papeis_new['Data Vencimento'] = pd.to_datetime(df_papeis_new['Data Vencimento'], errors='coerce').dt.date
 
 # 2. COERCE TIPOS NUMÉRICOS NOVAMENTE (segurança)
 numeric_cols = ['Valor', 'Qtde', 'Taxa']
 for col in numeric_cols:
-    # 🌟 CORREÇÃO REFORÇADA: Força para numérico, transformando erros em NaN
     df_papeis_new[col] = pd.to_numeric(df_papeis_new[col], errors='coerce') 
 
 # 3. FILTRAGEM: Remove linhas onde a data ou os valores essenciais são inválidos (NaN/NaT)
-# Remove linhas com data inválida OU onde valores numéricos críticos se tornaram NaN após a coerção
 df_papeis_new = df_papeis_new.dropna(subset=['Data Vencimento', 'Valor', 'Qtde', 'Taxa'])
 
 # 4. FILTRAGEM DE VALOR: Remove linhas onde os valores são zero ou negativos
 df_papeis_new = df_papeis_new[
     (df_papeis_new['Valor'] > 0) & 
     (df_papeis_new['Taxa'] > 0) &
-    (df_papeis_new['Qtde'] > 0) # Adiciona verificação de Qtde > 0
+    (df_papeis_new['Qtde'] > 0) 
 ]
 
-# 5. CONVERSÃO DE VOLTA: Após a limpeza, converte os nulos filtrados para float (para evitar erros posteriores)
-for col in numeric_cols:
-     df_papeis_new[col] = df_papeis_new[col].astype(float).round(2)
-
+# 5. CONVERSÃO DE VOLTA: Após a limpeza, converte para tipos específicos
+df_papeis_new['Valor'] = df_papeis_new['Valor'].astype(float).round(2)
+df_papeis_new['Taxa'] = df_papeis_new['Taxa'].astype(float).round(2)
+df_papeis_new['Qtde'] = df_papeis_new['Qtde'].astype(int) # Qtde deve ser inteiro
 
 papeis_anteriores_len = len(st.session_state.papeis)
 st.session_state.papeis = df_papeis_new.to_dict('records')
@@ -721,7 +734,6 @@ st.markdown("---")
 
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 if not st.session_state.papeis:
-    # Se a tabela está vazia (ou todos foram filtrados por serem inválidos), para a execução
     st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
     st.stop()
     
@@ -733,10 +745,11 @@ current_cdi_benchmark = st.session_state.cdi_benchmark_geral
 for papel in st.session_state.papeis:
     try:
         papel_temp = papel.copy()
-        # Garante que os valores são floats
+        
+        # Garante que os valores são floats/int antes de passar para o cálculo
         papel_temp['Valor'] = float(papel_temp['Valor'])
         papel_temp['Taxa'] = float(papel_temp['Taxa'])
-        papel_temp['Qtde'] = float(papel_temp.get('Qtde', 1.0))
+        papel_temp['Qtde'] = int(papel_temp.get('Qtde', 1))
         
         # Chama a função de cálculo
         resultado, erro = calcular_papel(papel_temp, st.session_state.data_aplicacao, current_cdi_benchmark)
@@ -746,7 +759,7 @@ for papel in st.session_state.papeis:
             papeis_para_grafico.append(papel_temp)
             resultados_calculados.append(resultado)
         elif erro:
-            # 🌟 MENSAGEM DE ERRO DETALHADA AQUI
+            # 🌟 MENSAGEM DE ERRO DETALHADA AQUI (O mais importante!)
             st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **Motivo: {erro}**")
             
     except Exception as e:
@@ -756,9 +769,7 @@ for papel in st.session_state.papeis:
         
 
 if not resultados_calculados:
-    # Se todos os papéis foram filtrados ou causaram erro, NADA DEVE APARECER ABAIXO DESTE PONTO.
     st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento posterior à Data de Aplicação).")
-    # Este é o st.stop() final que impede o restante da UI de carregar se não houver dados.
     st.stop()
 
 # CÁLCULOS FINAIS
