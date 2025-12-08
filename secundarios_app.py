@@ -110,7 +110,6 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     taxa_input = papel['Taxa']
 
     # --- 1. VALIDAÇÃO E PRAZO ---
-    # Garantir que data_vencimento é um objeto date
     if isinstance(data_vencimento, pd.Timestamp):
         data_vencimento = data_vencimento.date()
     elif isinstance(data_vencimento, str):
@@ -120,15 +119,12 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
             try:
                 data_vencimento = datetime.datetime.strptime(data_vencimento, '%d/%m/%Y').date()
             except ValueError:
+                # Usa 'Código' no erro para ser consistente com o frontend, embora a chave interna seja 'Ticker'
                 return None, f"Formato de Data de Vencimento inválido para {papel.get('Ticker', 'novo papel')}"
-    elif not isinstance(data_vencimento, datetime.date):
-         return None, f"Data de Vencimento inválida ou ausente para {papel.get('Ticker', 'novo papel')}"
-
 
     # Prazo (diferença entre a data de vencimento e a data de aplicação)
     prazo_dias = (data_vencimento - data_aplicacao).days
     
-    # Validação crítica para o erro de 'sumir tudo'
     if prazo_dias <= 0 or valor_investido <= 0 or taxa_input <= 0:
         return None, f"Dados inválidos para {papel.get('Ticker', 'novo papel')}"
     
@@ -307,6 +303,42 @@ def save_proposal_to_csv(papeis_para_grafico, nome_assessor, nome_cliente, codig
     except Exception as e:
         st.error(f"Erro ao salvar no CSV: {e}")
         return None
+
+# ===================== FUNÇÃO DE VERIFICAÇÃO E LEITURA (CONSULTA) - MANTIDA, MAS NÃO CHAMADA =====================
+
+def display_csv_content():
+    """Carrega o arquivo CSV e exibe seu conteúdo para verificação."""
+    if not os.path.exists(CSV_FILE):
+        st.info(f"O arquivo '{CSV_FILE}' ainda não foi criado ou salvo nesta sessão.")
+        return False
+        
+    try:
+        # Usa o separador e o ponto decimal definidos em save_proposal_to_csv
+        df_propostas = pd.read_csv(CSV_FILE, sep=';', decimal='.')
+        
+        # Filtra colunas de identificação para melhor visualização inicial
+        colunas_identificacao = ['codigo_simulacao', 'data_hora_geracao', 'nome_assessor', 'nome_cliente', 'codigo_cdb', 'valor_investido']
+        
+        st.subheader(f"Conteúdo Atual do Arquivo {CSV_FILE}", divider='gray')
+        
+        if df_propostas.empty:
+            st.warning(f"O arquivo '{CSV_FILE}' existe, mas não contém propostas salvas.")
+            return False
+            
+        st.info(f"Total de **{len(df_propostas)}** registros de papéis salvos em **{len(df_propostas['codigo_simulacao'].unique())}** propostas.")
+        
+        # Usa um st.expander para não poluir a interface, mas manter acessível
+        with st.expander("Clique para visualizar todos os dados salvos"):
+            st.dataframe(df_propostas[colunas_identificacao + [c for c in df_propostas.columns if c not in colunas_identificacao]], use_container_width=True)
+            
+        return True
+    
+    except pd.errors.EmptyDataError:
+        st.warning(f"O arquivo '{CSV_FILE}' existe, mas está vazio.")
+        return False
+    except Exception as e:
+        st.error(f"Erro ao carregar o CSV para verificação: {e}")
+        return False
 
 # ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
 def grafico_png():
@@ -646,24 +678,13 @@ st.subheader("Papéis Incluídos para Simulação", divider='gray')
 # Prepara o DataFrame para o editor
 if st.session_state.papeis:
     df_papeis = pd.DataFrame(st.session_state.papeis)
-    # Garante que 'Qtde' existe
+    # Garante que 'Qtde' existe, ou usa 1.0 como padrão se for a primeira vez
     if 'Qtde' not in df_papeis.columns:
         df_papeis['Qtde'] = 1.0
-        
-    # COERÇÃO INICIAL DE TIPO (necessária antes de arredondar/filtrar)
     df_papeis['Data Vencimento'] = pd.to_datetime(df_papeis['Data Vencimento'], errors='coerce').dt.date
-    
-    # As colunas abaixo serão limpas e convertidas novamente após o data_editor
-    try:
-        df_papeis['Valor'] = pd.to_numeric(df_papeis['Valor'], errors='coerce').fillna(0.0).round(2)
-        df_papeis['Qtde'] = pd.to_numeric(df_papeis['Qtde'], errors='coerce').fillna(1.0).round(2) 
-        df_papeis['Taxa'] = pd.to_numeric(df_papeis['Taxa'], errors='coerce').fillna(0.0).round(2)
-    except:
-        # fallback
-        df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
-        df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) 
-        df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
-        
+    df_papeis['Valor'] = df_papeis['Valor'].astype(float).round(2)
+    df_papeis['Qtde'] = df_papeis['Qtde'].astype(float).round(2) # Conversão de tipo
+    df_papeis['Taxa'] = df_papeis['Taxa'].astype(float).round(2)
 else:
     # Adiciona 'Qtde' na criação do DataFrame vazio
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
@@ -674,7 +695,7 @@ df_papeis_edit = df_papeis.rename(columns={
     'Emissor': 'Emissor',
     'Ticker': 'Código',
     'Valor': 'Valor Investido (R$)',
-    'Qtde': 'Qtde.', 
+    'Qtde': 'Qtde.', # Mapeamento da Qtde
     'Tipo': 'Tipo de Taxa',
     'Taxa': 'Taxa (%)',
     'Data Vencimento': 'Vencimento',
@@ -734,20 +755,10 @@ df_papeis_new = edited_df.rename(columns={
     'Vencimento': 'Data Vencimento',
 })
 
-# =========================================================
-# A CORREÇÃO CRÍTICA PARA O VALUER ERROR E FILTRAGEM SUJA:
-# Coerce non-numeric/empty values to NaN, then fill NaN with 0.0
-# Isso garante que as colunas são NUMÉRICAS antes de filtrar.
-# =========================================================
-numeric_cols = ['Valor', 'Qtde', 'Taxa']
-for col in numeric_cols:
-    df_papeis_new[col] = pd.to_numeric(df_papeis_new[col], errors='coerce').fillna(0.0)
-
-
-# Remove linhas onde os valores essenciais não são válidos (Valores financeiros > 0)
+# Remove linhas onde os valores essenciais não são válidos
 df_papeis_new = df_papeis_new[
-    (df_papeis_new['Valor'].astype(float) > 0) & 
-    (df_papeis_new['Taxa'].astype(float) > 0) & 
+    (df_papeis_new['Valor'].astype(float) > 0) &
+    (df_papeis_new['Taxa'].astype(float) > 0) &
     (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
 ]
 
@@ -763,7 +774,6 @@ st.markdown("---")
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 if not st.session_state.papeis:
     st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
-    # Se não houver papéis, o código para aqui, conforme o esperado
     st.stop()
     
 resultados_calculados = []
@@ -774,34 +784,25 @@ current_cdi_benchmark = st.session_state.cdi_benchmark_geral
 for papel in st.session_state.papeis:
     try:
         papel_temp = papel.copy()
-        # Garante que os valores são floats
         papel_temp['Valor'] = float(papel_temp['Valor'])
         papel_temp['Taxa'] = float(papel_temp['Taxa'])
+        # Qtde é apenas para a mensagem, mas garantimos o float
         papel_temp['Qtde'] = float(papel_temp.get('Qtde', 1.0))
-        
-        # Chama a função de cálculo
-        resultado, erro = calcular_papel(papel_temp, st.session_state.data_aplicacao, current_cdi_benchmark)
-        
-        if resultado:
-            papel_temp.update(resultado)
-            papeis_para_grafico.append(papel_temp)
-            resultados_calculados.append(resultado)
-        elif erro:
-            st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
-            
-    except Exception as e:
-        # Captura qualquer erro de conversão remanescente e continua
-        st.warning(f"Erro ao processar o papel {papel.get('Ticker', 'novo papel')}. Detalhe: {e}")
+    except (ValueError, TypeError):
         continue
         
+    resultado, erro = calcular_papel(papel_temp, st.session_state.data_aplicacao, current_cdi_benchmark)
+    if resultado:
+        papel_temp.update(resultado)
+        papeis_para_grafico.append(papel_temp)
+        resultados_calculados.append(resultado)
+    elif erro:
+        st.warning(f"Atenção: Papel **{papel.get('Ticker', 'novo papel')}** ignorado na simulação. **{erro}**")
 
 if not resultados_calculados:
     st.error("Não há papéis válidos para consolidar. Verifique os dados inseridos (Valor > R$0, Taxa > 0% e Vencimento futuro).")
-    # Este st.stop() é o que fazia tudo sumir se NENHUM papel fosse válido. Agora,
-    # ele só será acionado se realmente não houver resultados.
     st.stop()
 
-# CÁLCULOS FINAIS
 total_investido = sum(r['Valor Investido'] for r in resultados_calculados)
 total_bruto = sum(r['Montante Bruto'] for r in resultados_calculados)
 total_impostos = sum(r['Total Impostos'] for r in resultados_calculados)
@@ -839,7 +840,7 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 
                 if not sim_id:
                     # Se não salvou, interrompe a geração do PDF e mostra o erro
-                    st.error("Falha ao salvar a proposta no banco de dados CSV.")
+                    st.error("Falha ao salvar a proposta no banco de dados CSV. Verifique se o arquivo 'propostas.csv' existe e se as permissões de escrita estão corretas.")
                     st.stop()
                     
                 # 2. GERAR PDF
@@ -850,6 +851,8 @@ if st.button("GERAR PROPOSTA CONSOLIDADA", type="primary", use_container_width=T
                 st.markdown(href, unsafe_allow_html=True)
                 
                 st.success(f"Proposta com ID **{sim_id}** salva no CSV e PDF gerado com sucesso! Clique no link acima para baixar.")
+                
+                # A LINHA st.rerun() FOI REMOVIDA AQUI PARA MANTER O LINK VISÍVEL
             
             except Exception as e:
                 if "papéis válidos" in str(e):
