@@ -127,7 +127,8 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
     
     # Validação crítica para o erro de 'sumir tudo'
     if prazo_dias <= 0 or valor_investido <= 0 or taxa_input <= 0:
-        return None, f"Dados inválidos para {papel.get('Ticker', 'novo papel')}"
+        # Erro comum: Prazo Dias <= 0 se Vencimento não for futuro em relação à Data de Aplicação
+        return None, f"Dados inválidos para {papel.get('Ticker', 'novo papel')}. (Prazo: {prazo_dias} dias)"
     
     # Constante de cálculo financeiro (360 dias)
     dias_ano = 360
@@ -358,13 +359,16 @@ def criar_pdf_secundarios():
     
     for p in papeis_para_grafico:
         vencimento_date = p['Data Vencimento']
+        # Garantir que é um objeto date
         if isinstance(vencimento_date, pd.Timestamp):
             vencimento_date = vencimento_date.date()
         elif isinstance(vencimento_date, str):
             try:
                 vencimento_date = datetime.datetime.strptime(vencimento_date, '%Y-%m-%d').date()
             except:
-                vencimento_date = st.session_state.data_aplicacao
+                vencimento_date = st.session_state.data_aplicacao # Fallback seguro, mas a filtragem deveria ter removido
+        elif not isinstance(vencimento_date, datetime.date):
+             vencimento_date = st.session_state.data_aplicacao
         
         tipo_taxa_display = "Pós-fixado" if p['Tipo'] == 'Pós-fixado (% do CDI)' else p['Tipo']
         taxa_str = f"{p['Taxa']:.2f}% a.a." if p['Tipo'] == 'Pré-fixado' else f"{p['Taxa']:.2f}% do CDI"
@@ -668,21 +672,28 @@ df_papeis_new = edited_df.rename(columns={
 })
 
 # =========================================================
-# A CORREÇÃO CRÍTICA PARA O VALUER ERROR E FILTRAGEM SUJA:
-# Coerce non-numeric/empty values to NaN, then fill NaN with 0.0
-# Isso garante que as colunas são NUMÉRICAS antes de filtrar.
+# CORREÇÃO CRÍTICA 1: GARANTIR QUE DATA É UM OBJETO DE DATA
+# O data_editor pode retornar string ou timestamp, precisamos de um objeto date limpo.
 # =========================================================
+df_papeis_new['Data Vencimento'] = pd.to_datetime(df_papeis_new['Data Vencimento'], errors='coerce').dt.date
+
+# COERCE TIPOS NUMÉRICOS NOVAMENTE (segurança)
 numeric_cols = ['Valor', 'Qtde', 'Taxa']
 for col in numeric_cols:
     df_papeis_new[col] = pd.to_numeric(df_papeis_new[col], errors='coerce').fillna(0.0)
 
 
-# Remove linhas onde os valores essenciais não são válidos (Valores financeiros > 0)
-# CORREÇÃO APLICADA: Removendo o .astype(float) redundante que causava o ValueError.
+# =========================================================
+# FILTRAGEM: Remove linhas inválidas
+# =========================================================
+
+# 1. Remove linhas onde a Data Vencimento não foi informada ou é inválida (NaT/None)
+df_papeis_new = df_papeis_new.dropna(subset=['Data Vencimento'])
+
+# 2. Remove linhas onde os valores essenciais não são válidos (Valores financeiros > 0)
 df_papeis_new = df_papeis_new[
     (df_papeis_new['Valor'] > 0) & 
-    (df_papeis_new['Taxa'] > 0) & 
-    (df_papeis_new['Data Vencimento'].apply(lambda x: isinstance(x, (datetime.date, pd.Timestamp)) or pd.notna(x)))
+    (df_papeis_new['Taxa'] > 0)
 ]
 
 papeis_anteriores_len = len(st.session_state.papeis)
@@ -697,7 +708,6 @@ st.markdown("---")
 # ===================== CÁLCULOS CONSOLIDADOS =====================
 if not st.session_state.papeis:
     st.info("Nenhum papel válido para simulação. Por favor, adicione um papel com valor e taxa positivos e data de vencimento futura na tabela acima.")
-    # Se não houver papéis, o código para aqui, conforme o esperado
     st.stop()
     
 resultados_calculados = []
