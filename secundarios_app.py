@@ -184,8 +184,6 @@ def calcular_papel(papel, data_aplicacao, taxa_cdi_benchmark):
 
     return resultado, None
 
-# Removidas: generate_execution_message, save_proposal_to_csv, display_csv_content
-
 # ===================== FUNÇÕES DE GERAÇÃO DE PDF E GRÁFICO =====================
 def grafico_png():
     df_pdf = pd.DataFrame(papeis_para_grafico)
@@ -532,7 +530,6 @@ if st.session_state.papeis:
     df_papeis['Taxa'] = pd.to_numeric(df_papeis['Taxa'], errors='coerce').round(2)
     # Remove linhas com NaN nos campos críticos para evitar que o data_editor quebre ao carregar
     df_papeis = df_papeis.dropna(subset=['Valor', 'Taxa', 'Data Vencimento'])
-
 else:
     # Adiciona 'Qtde' na criação do DataFrame vazio
     df_papeis = pd.DataFrame(columns=['Emissor', 'Ticker', 'Valor', 'Qtde', 'Tipo', 'Taxa', 'Data Vencimento'])
@@ -545,7 +542,7 @@ df_papeis_edit = df_papeis.rename(columns={
     'Qtde': 'Qtde.', # Mapeamento da Qtde
     'Tipo': 'Tipo de Taxa',
     'Taxa': 'Taxa (%)',
-    'Data Vencimento': 'Vencimento',
+    'Vencimento': 'Vencimento',
 })
 
 # ORDEM: Inclui 'Qtde.'
@@ -554,10 +551,12 @@ colunas_data_editor = ['Emissor', 'Código', 'Valor Investido (R$)', 'Qtde.', 'T
 st.info("Para **editar** um papel, clique duas vezes na célula. Para **remover**, selecione a linha e pressione o botão `Del` no teclado ou o ícone 🗑️ na tabela. Para **adicionar** um novo papel, use o botão `+` no rodapé da tabela.")
 
 
+# INÍCIO DO BLOCO DE CONFIGURAÇÃO CORRIGIDO
 column_config_papeis = {
-    "Emissor": st.column_config.SelectboxColumn(
+    # CORREÇÃO: Emissor como campo de texto livre
+    "Emissor": st.column_config.TextColumn( 
         "Emissor",
-        options=["BANCO NBC", "BANCO ORIGINAL S/A", "BTG PACTUAL", "CAIXA", "BRADESCO", "ITAU BBA", "SANTANDER"],
+        help="Nome da instituição emissora do papel",
         required=True
     ),
     "Código": st.column_config.TextColumn(
@@ -596,6 +595,7 @@ column_config_papeis = {
         required=True
     ),
 }
+# FIM DO BLOCO DE CONFIGURAÇÃO CORRIGIDO
 
 # FIM DA CONFIGURAÇÃO DO DATA EDITOR (retorna um DataFrame)
 edited_df = st.data_editor(
@@ -607,7 +607,7 @@ edited_df = st.data_editor(
 )
 
 # =========================================================
-# BLOCO SUBSTITUTO SEGURO (Otimizado contra "array element with a sequence")
+# BLOCO SUBSTITUTO SEGURO (MANTIDO para garantir estabilidade)
 # =========================================================
 
 df_edited = edited_df
@@ -627,7 +627,7 @@ df_edited = df_edited.rename(columns={
 try:
     df_clean = df_edited.copy()
     
-    # **CORREÇÃO PRINCIPAL**: pd.to_numeric() converte listas/sequências/strings inválidas para NaN.
+    # pd.to_numeric() converte listas/sequências/strings inválidas para NaN, resolvendo o ValueError
     df_clean['Valor'] = pd.to_numeric(df_clean['Valor'], errors='coerce')
     df_clean['Taxa'] = pd.to_numeric(df_clean['Taxa'], errors='coerce')
     # Coerce + fillna(1) para garantir Qtde mínima de 1 se for NaN
@@ -744,6 +744,7 @@ else:
             nome_arq = f"Proposta_RendaFixa_{st.session_state['nome_cliente'].replace(' ', '_')}.pdf"
             
             # Botão de download simples (sem referência a ID de simulação)
+            # Usa o estilo de botão primário
             href = f'<a href="data:application/pdf;base64,{b64}" download="{nome_arq}" class="stButton" style="text-decoration:none;"><button data-testid="baseButton-primary" style="width:100%;">BAIXAR PROPOSTA CONSOLIDADA</button></a>'
             
             st.markdown(href, unsafe_allow_html=True)
